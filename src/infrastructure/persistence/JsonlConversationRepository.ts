@@ -1,7 +1,7 @@
 import { ConversationRepository } from '../../domain/repositories/ConversationRepository.js';
 import { Conversation } from '../../domain/models/Conversation.js';
 import { ProjectContext } from '../../domain/models/ProjectContext.js';
-import { UserMessage, AssistantMessage, ToolUse, TokenUsage } from '../../domain/models/Message.js';
+import { UserMessage, AssistantMessage, ToolUse, TokenUsage, ToolInteraction } from '../../domain/models/Message.js';
 import { readdir, readFile } from 'fs/promises';
 import { join, basename } from 'path';
 
@@ -135,9 +135,17 @@ export class JsonlConversationRepository implements ConversationRepository {
             const parentId = data.parentId || null;
 
             if (data.type === 'user') {
-                return this.parseUserMessage(id, timestamp, parentId, data);
+                // Check if this is a tool result message
+                if (Array.isArray(data.message?.content)) {
+                    const hasOnlyToolResults = data.message.content.every((item: any) => item.type === 'tool_result');
+                    if (hasOnlyToolResults) {
+                        // Skip tool result messages - they are not real user messages
+                        return null;
+                    }
+                }
+                return this.parseUserMessage(id, timestamp, parentId, data.message);
             } else if (data.type === 'assistant') {
-                return this.parseAssistantMessage(id, timestamp, parentId, data);
+                return this.parseAssistantMessage(id, timestamp, parentId, data.message);
             }
 
             return null;
@@ -146,31 +154,77 @@ export class JsonlConversationRepository implements ConversationRepository {
         }
     }
 
-    private parseUserMessage(id: string, timestamp: Date, parentId: string | null, data: any): UserMessage {
-        const content = data.content || '';
-        return new UserMessage(id, timestamp, parentId, content);
+    private parseUserMessage(id: string, timestamp: Date, parentId: string | null, messageData: any): UserMessage {
+        if (typeof messageData.content === 'string') {
+            return new UserMessage(id, timestamp, parentId, messageData.content);
+        } else if (Array.isArray(messageData.content)) {
+            // Check if this is a tool result message
+            const hasToolResults = messageData.content.some((item: any) => item.type === 'tool_result');
+            if (hasToolResults) {
+                // Handle tool results
+                const toolInteractions = messageData.content
+                    .filter((item: any) => item.type === 'tool_result')
+                    .map((item: any) => new ToolInteraction(
+                        item.tool_use_id, 
+                        item.type, 
+                        typeof item.content === 'string' ? item.content : JSON.stringify(item.content), 
+                        item.is_error || false
+                    ));
+                return new UserMessage(id, timestamp, parentId, toolInteractions);
+            } else {
+                // Handle regular text content in array format
+                const textParts: string[] = [];
+                for (const item of messageData.content) {
+                    if (item.type === 'text') {
+                        textParts.push(item.text);
+                    } else if (item.type === 'image') {
+                        textParts.push('[Image attached]');
+                    }
+                }
+                return new UserMessage(id, timestamp, parentId, textParts.join(' '));
+            }
+        } else {
+            // Fallback for unknown format
+            return new UserMessage(id, timestamp, parentId, '');
+        }
     }
 
-    private parseAssistantMessage(id: string, timestamp: Date, parentId: string | null, data: any): AssistantMessage {
-        const textContent = data.content || '';
-        const model = data.model || 'unknown';
+    private parseAssistantMessage(id: string, timestamp: Date, parentId: string | null, messageData: any): AssistantMessage {
+        // Ensure content is an array before processing
+        const content = Array.isArray(messageData.content) ? messageData.content : [];
         
-        // Parse tool uses
+        // Extract and process all content types
+        const textParts: string[] = [];
         const toolUses: ToolUse[] = [];
-        if (data.toolUse && Array.isArray(data.toolUse)) {
-            for (const tool of data.toolUse) {
-                toolUses.push(new ToolUse(tool.id || 'unknown', tool.name || 'unknown', tool.input || {}));
+        
+        for (const item of content) {
+            if (item.type === 'text') {
+                if (item.text) {
+                    textParts.push(item.text);
+                }
+            } else if (item.type === 'tool_use') {
+                toolUses.push(new ToolUse(item.id, item.name, item.input));
+            } else {
+                // Handle unknown types gracefully
+                if (item.text) {
+                    textParts.push(`[${item.type}: ${item.text}]`);
+                } else {
+                    textParts.push(`[${item.type} content]`);
+                }
             }
         }
+        
+        const textContent = textParts.join('\n') || '';
+        
+        // Extract usage information
+        const usage = messageData.usage ? 
+            new TokenUsage(
+                messageData.usage.input_tokens || 0,
+                messageData.usage.output_tokens || 0,
+                messageData.usage.cache_creation_input_tokens || 0,
+                messageData.usage.cache_read_input_tokens || 0
+            ) : new TokenUsage(0, 0, 0, 0);
 
-        // Parse token usage
-        const usage = new TokenUsage(
-            data.usage?.inputTokens || 0,
-            data.usage?.outputTokens || 0,
-            data.usage?.cacheCreationTokens || 0,
-            data.usage?.cacheReadTokens || 0
-        );
-
-        return new AssistantMessage(id, timestamp, parentId, textContent, toolUses, model, usage);
+        return new AssistantMessage(id, timestamp, parentId, textContent, toolUses, messageData.model || 'unknown', usage);
     }
 }

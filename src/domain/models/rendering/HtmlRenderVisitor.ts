@@ -459,9 +459,9 @@ export class HtmlRenderVisitor implements ConversationRenderVisitor {
     private renderResponseMetadata(response: AssistantResponse): string {
         let metadata = '<aside class="response-metadata">\n';
         
-        metadata += `<div class="metadata-item"><span class="label">Model:</span> <span class="value">${this.escapeHtml(response.model)}</span></div>\n`;
+        metadata += `<div class="metadata-item"><span class="label">Model:</span> <span class="value">${this.escapeHtml(response.model || '')}</span></div>\n`;
         metadata += `<div class="metadata-item"><span class="label">Type:</span> <span class="value">${response.getResponseType()}</span></div>\n`;
-        metadata += `<div class="metadata-item"><span class="label">Tokens:</span> <span class="value">${response.usage.inputTokens} in / ${response.usage.outputTokens} out</span></div>\n`;
+        metadata += `<div class="metadata-item"><span class="label">Tokens:</span> <span class="value">${response.usage.input_tokens} in / ${response.usage.output_tokens} out</span></div>\n`;
         
         if (response.codeBlocks.length > 0) {
             metadata += `<div class="metadata-item"><span class="label">Code Blocks:</span> <span class="value">${response.codeBlocks.length}</span></div>\n`;

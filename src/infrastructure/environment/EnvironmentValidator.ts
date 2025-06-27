@@ -69,19 +69,36 @@ export class EnvironmentValidator {
         const issues: string[] = [];
         const warnings: string[] = [];
 
-        // 检查TTY可用性
+        // TTY检查
         if (!info.isTTY && !info.canBypassTTY) {
-            issues.push('TTY not available and bypass not enabled');
+            issues.push('Not running in a TTY environment');
+            issues.push('Set SMTT_BYPASS_TTY=true or NODE_ENV=development to bypass');
         }
 
-        // 检查终端尺寸
+        // 终端尺寸检查
         if (!info.terminalSize.meetsMinimumRequirements) {
-            warnings.push(`Terminal size ${info.terminalSize.width}x${info.terminalSize.height} is below recommended minimum`);
+            if (info.terminalSize.width < 80) {
+                issues.push(`Terminal width is too narrow (${info.terminalSize.width} < 80 columns required)`);
+            }
+            if (info.terminalSize.height < 20) {
+                issues.push(`Terminal height is too short (${info.terminalSize.height} < 20 rows required)`);
+            }
         }
 
-        // 检查颜色支持
+        // 颜色支持警告
         if (!info.colorSupport.hasColors) {
-            warnings.push('Limited or no color support detected');
+            warnings.push('Terminal does not support colors - using plain text mode');
+        }
+
+        // Warp终端特殊处理
+        if (info.terminalType.isWarp) {
+            warnings.push('Warp terminal detected - using compatible rendering mode');
+        }
+
+        // Node.js版本检查
+        const nodeVersion = parseInt(process.version.slice(1).split('.')[0]);
+        if (nodeVersion < 18) {
+            issues.push(`Node.js version ${process.version} is not supported (minimum: v18.0.0)`);
         }
 
         return {
@@ -115,8 +132,7 @@ export class EnvironmentValidator {
      * 检查是否为Warp终端
      */
     isWarpTerminal(): boolean {
-        const info = this.getEnvironmentInfo();
-        return info.terminalType.isWarp;
+        return this.getEnvironmentInfo().terminalType.isWarp;
     }
 
     /**
@@ -146,13 +162,13 @@ export class EnvironmentValidator {
     }
 
     private detectTTY(): boolean {
-        return process.stdout.isTTY === true && process.stdin.isTTY === true;
+        return Boolean(process.stdout.isTTY && process.stdin.isTTY);
     }
 
     private canBypassTTY(): boolean {
-        return process.env.FORCE_COLOR === 'true' ||
-               process.env.NODE_ENV === 'development' ||
-               process.env.BYPASS_TTY === 'true';
+        return process.env.SMTT_BYPASS_TTY === 'true' ||
+            process.env.NODE_ENV === 'development' ||
+            process.env.NODE_ENV === 'test';
     }
 
     private detectTerminalSize(): EnvironmentInfo['terminalSize'] {
@@ -162,52 +178,59 @@ export class EnvironmentValidator {
         return {
             width,
             height,
-            meetsMinimumRequirements: width >= 80 && height >= 24
+            meetsMinimumRequirements: width >= 80 && height >= 20
         };
     }
 
     private detectColorSupport(): EnvironmentInfo['colorSupport'] {
-        const colorterm = process.env.COLORTERM || '';
-        const term = process.env.TERM || '';
-        
         let level = 0;
-        let hasColors = false;
         let depth = 0;
 
-        if (process.env.FORCE_COLOR === 'true' || colorterm.includes('truecolor')) {
+        // 检测颜色支持级别
+        if (process.env.COLORTERM === 'truecolor') {
             level = 3;
-            hasColors = true;
             depth = 24;
-        } else if (colorterm.includes('256') || term.includes('256')) {
+        }
+        else if (process.env.TERM?.includes('256')) {
             level = 2;
-            hasColors = true;
             depth = 8;
-        } else if (process.stdout.isTTY) {
+        }
+        else if (process.env.TERM?.includes('color')) {
             level = 1;
-            hasColors = true;
             depth = 4;
         }
+        else if (process.stdout.hasColors && process.stdout.hasColors()) {
+            level = 1;
+            depth = process.stdout.getColorDepth ? process.stdout.getColorDepth() : 4;
+        }
+        else if (process.stdout.getColorDepth) {
+            depth = process.stdout.getColorDepth();
+            level = depth > 1 ? 1 : 0;
+        }
 
-        return { level, hasColors, depth };
+        return {
+            level,
+            hasColors: level > 0,
+            depth: Math.max(depth, level > 0 ? 4 : 0)
+        };
     }
 
     private detectTerminalType(): EnvironmentInfo['terminalType'] {
-        const termProgram = process.env.TERM_PROGRAM || '';
-        const warpSessionId = process.env.WARP_SESSION_ID;
-        
-        const isWarp = termProgram.toLowerCase().includes('warp') || !!warpSessionId;
-        
+        const program = process.env.TERM_PROGRAM || 'unknown';
+        const isWarp = program === 'WarpTerminal' ||
+            process.env.WARP_IS_LOCAL_SHELL_SESSION === '1';
+
         return {
             isWarp,
-            type: termProgram || 'unknown',
-            program: termProgram
+            type: isWarp ? 'warp' : 'standard',
+            program
         };
     }
 
     private getEnvironmentVariables(): EnvironmentInfo['environment'] {
         return {
             nodeEnv: process.env.NODE_ENV || 'production',
-            bypassTTY: process.env.BYPASS_TTY === 'true',
+            bypassTTY: process.env.SMTT_BYPASS_TTY === 'true',
             colorterm: process.env.COLORTERM || '',
             term: process.env.TERM || ''
         };
@@ -245,15 +268,27 @@ export class EnvironmentValidator {
         const info = this.getEnvironmentInfo();
         const validation = this.validateTUIEnvironment();
 
-        return `Environment Diagnostic:
-Platform: ${info.platform.os} (Node ${info.platform.nodeVersion})
-TTY: ${info.isTTY ? 'Available' : 'Not available'} ${info.canBypassTTY ? '(bypass enabled)' : ''}
-Terminal: ${info.terminalSize.width}x${info.terminalSize.height} ${info.terminalType.isWarp ? '(Warp)' : `(${info.terminalType.program})`}
-Colors: ${info.colorSupport.hasColors ? `${info.colorSupport.depth}-bit` : 'None'}
-Environment: ${info.environment.nodeEnv}
+        const diagnostics = [
+            `Environment Diagnostic Information:`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `TTY: ${info.isTTY ? '✅' : '❌'} (Bypass: ${info.canBypassTTY ? '✅' : '❌'})`,
+            `Terminal: ${info.terminalSize.width}x${info.terminalSize.height} (${info.terminalSize.meetsMinimumRequirements ? '✅' : '❌'})`,
+            `Colors: Level ${info.colorSupport.level}, Depth ${info.colorSupport.depth} (${info.colorSupport.hasColors ? '✅' : '❌'})`,
+            `Type: ${info.terminalType.program} (${info.terminalType.type})`,
+            `Platform: ${info.platform.os} ${info.platform.nodeVersion}`,
+            `Environment: ${info.environment.nodeEnv}`,
+            ``,
+            `Validation: ${validation.isValid ? '✅ PASS' : '❌ FAIL'}`,
+        ];
 
-Validation: ${validation.isValid ? 'PASSED' : 'FAILED'}
-${validation.issues.length > 0 ? 'Issues: ' + validation.issues.join(', ') : ''}
-${validation.warnings.length > 0 ? 'Warnings: ' + validation.warnings.join(', ') : ''}`;
+        if (validation.issues.length > 0) {
+            diagnostics.push(`Issues: ${validation.issues.join(', ')}`);
+        }
+
+        if (validation.warnings.length > 0) {
+            diagnostics.push(`Warnings: ${validation.warnings.join(', ')}`);
+        }
+
+        return diagnostics.join('\n');
     }
 }

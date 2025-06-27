@@ -4,14 +4,12 @@
  * Domain service for extracting meaningful exchanges from conversations.
  * Moved from infrastructure layer to follow DDD principles.
  */
-
-import { Conversation } from '../models/Conversation.js';
-import { UserMessage, AssistantMessage, ToolInteraction } from '../models/Message.js';
+import { AssistantMessage, TokenUsage } from '../models/Message.js';
 
 export interface ConversationExchange {
-    userMessage: UserMessage;
-    assistantResponse: AssistantMessage;
-    toolInteractions: ToolInteraction[];
+    userMessage: any;
+    assistantResponse: any;
+    toolInteractions: any[];
     timestamp: Date;
     messageIndices: number[];
 }
@@ -33,7 +31,7 @@ export class ConversationExchangeExtractor {
     /**
      * Extract meaningful question-answer exchanges from a conversation
      */
-    extractExchanges(conversation: Conversation): ConversationExchange[] {
+    extractExchanges(conversation: any): ConversationExchange[] {
         const exchanges: ConversationExchange[] = [];
         const messages = conversation.messages;
         
@@ -43,8 +41,8 @@ export class ConversationExchangeExtractor {
             
             // Look for user-assistant pairs
             if (currentMessage.getType().toString() === 'user' && nextMessage.getType().toString() === 'assistant') {
-                const userMessage = currentMessage as UserMessage;
-                const assistantMessage = nextMessage as AssistantMessage;
+                const userMessage = currentMessage;
+                const assistantMessage = nextMessage;
                 
                 const exchange: ConversationExchange = {
                     userMessage,
@@ -157,22 +155,22 @@ export class ConversationExchangeExtractor {
         };
     }
 
-    private createEmptyAssistantMessage(): AssistantMessage {
+    createEmptyAssistantMessage(): AssistantMessage {
         // This is a placeholder implementation
         // In practice, this should use the proper AssistantMessage constructor
-        const emptyMessage = new (AssistantMessage as any)(
+        const emptyMessage = new AssistantMessage(
             'empty',
             new Date(),
             null,
             '',
             [],
             '',
-            { inputTokens: 0, outputTokens: 0 }
+            new TokenUsage(0, 0, 0, 0)
         );
         return emptyMessage;
     }
 
-    private inferTopic(exchange: ConversationExchange): string {
+    inferTopic(exchange: ConversationExchange): string {
         const userContent = exchange.userMessage.getContent().toLowerCase();
         const assistantContent = exchange.assistantResponse.getContent().toLowerCase();
         const allContent = userContent + ' ' + assistantContent;
@@ -211,11 +209,11 @@ export class ConversationExchangeExtractor {
         return 'General Discussion';
     }
 
-    private countWords(text: string): number {
+    countWords(text: string): number {
         return text.trim().split(/\s+/).filter(word => word.length > 0).length;
     }
 
-    private calculateAverageResponseTime(exchanges: ConversationExchange[]): number {
+    calculateAverageResponseTime(exchanges: ConversationExchange[]): number {
         if (exchanges.length < 2) return 0;
         
         const responseTimes: number[] = [];

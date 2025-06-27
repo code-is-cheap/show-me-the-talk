@@ -797,18 +797,16 @@ export class ComprehensiveInkTUI {
 
     private renderMainTimeline(state: any, React: any, Box: any, Text: any): any {
         const conversation = state.currentConversation;
-        if (!conversation) return null;
-
+        if (!conversation)
+            return null;
         const messages = conversation.messages;
         const currentIndex = state.currentMessageIndex;
         const terminalWidth = Math.min(process.stdout.columns || 80, 120);
         const timelineWidth = terminalWidth - 8;
-
         // 🧠 PERFECT 2D BLOCKS: Focus on precision
         // Step 1: Ensure EVERY message gets at least 1 width
         const totalMessages = messages.length;
-        let messageWidths: number[];
-
+        let messageWidths;
         if (totalMessages <= timelineWidth) {
             // Normal case: more space than messages
             const baseWidth = Math.floor(timelineWidth / totalMessages);
@@ -816,7 +814,8 @@ export class ComprehensiveInkTUI {
             messageWidths = messages.map((_: any, i: number) => {
                 return Math.max(1, baseWidth + (i < remainder ? 1 : 0));
             });
-        } else {
+        }
+        else {
             // Dense case: more messages than width - give each 1 char, compress if needed
             const compressionFactor = timelineWidth / totalMessages;
             let usedWidth = 0;
@@ -840,7 +839,6 @@ export class ComprehensiveInkTUI {
                 }
             }
         }
-
         // Step 2: Calculate heights with better distribution
         const messageData = messages.map((msg: any, i: number) => {
             const content = msg.getContent();
@@ -851,13 +849,16 @@ export class ComprehensiveInkTUI {
                 .replace(/\[Edited:.*?\]/g, '')
                 .trim();
             const contentLength = Math.max(cleanContent.length, 20);
-
             // Better height calculation: 1-5 levels based on content
             let height = 1;
-            if (contentLength > 100) height = 2;
-            if (contentLength > 300) height = 3;
-            if (contentLength > 800) height = 4;
-            if (contentLength > 1500) height = 5;
+            if (contentLength > 100)
+                height = 2;
+            if (contentLength > 300)
+                height = 3;
+            if (contentLength > 800)
+                height = 4;
+            if (contentLength > 1500)
+                height = 5;
 
             return {
                 index: i,
@@ -867,9 +868,8 @@ export class ComprehensiveInkTUI {
                 isActive: i === currentIndex
             };
         });
-
         const maxHeight = Math.max(...messageData.map((m: any) => m.height));
-
+        
         // Step 3: Build perfect 2D grid
         const timelineRows = [];
         // Render each row from top to bottom
@@ -888,7 +888,8 @@ export class ComprehensiveInkTUI {
                         bold: msgData.isActive,
                         backgroundColor: msgData.isActive ? 'black' : undefined
                     }, blockString));
-                } else {
+                }
+                else {
                     // Empty space
                     rowElements.push(React.createElement(Text, {
                         key: `empty-${msgData.index}-row-${row}`
@@ -900,7 +901,6 @@ export class ComprehensiveInkTUI {
                 flexDirection: 'row'
             }, rowElements));
         }
-
         return React.createElement(Box, {
             key: 'main-timeline',
             flexDirection: 'column',
@@ -909,14 +909,52 @@ export class ComprehensiveInkTUI {
             paddingLeft: 1,
             paddingRight: 1
         }, [
-            React.createElement(Text, { key: 'label', color: 'gray' }, 
-                `Timeline: ${messages.length} messages | 👤=User 🤖=AI`
-            ),
+            React.createElement(Text, { key: 'label', color: 'gray' }, `Timeline: ${messages.length} messages | 👤=User 🤖=AI`),
             ...timelineRows,
-            React.createElement(Text, { key: 'position', color: 'gray' }, 
-                `Position: ${currentIndex + 1}/${messages.length} | ${this.getMessageType(messages[currentIndex]) === 'user' ? '👤 User' : '🤖 AI'}`
-            ),
+            React.createElement(Text, { key: 'position', color: 'gray' }, `Position: ${currentIndex + 1}/${messages.length} | ${this.getMessageType(messages[currentIndex]) === 'user' ? '👤 User' : '🤖 AI'}`),
         ]);
+    }
+
+    private renderTimeline(state: any, React: any, Box: any, Text: any): any {
+        const conversation = state.currentConversation;
+        if (!conversation)
+            return null;
+        const messages = conversation.messages;
+        const currentIndex = state.currentMessageIndex;
+        // Use the visual timeline renderer for proper position mapping
+        const timelineRenderer = new VisualTimelineRenderer({
+            maxWidth: Math.min(120, process.stdout.columns - 4), // Adapt to terminal width
+            showBorder: true,
+            showPositionIndicator: true,
+            compactMode: false,
+            enableScrollIndicators: true
+        });
+        const timelineLines = timelineRenderer.renderTimeline(messages, currentIndex);
+        const statsLine = timelineRenderer.renderStats(messages, currentIndex);
+        // Convert timeline strings to React elements with proper styling
+        const timelineElements = timelineLines.map((line: string, index: number) => 
+            React.createElement(Text, {
+                key: `timeline-${index}`,
+                // Strip ANSI codes for Ink rendering - Ink handles colors differently
+                color: line.includes('current') ? 'black' : undefined,
+                backgroundColor: line.includes('current') ? 'cyan' : undefined
+            }, this.stripAnsiCodes(line))
+        );
+        return React.createElement(Box, { key: 'timeline', flexDirection: 'column' }, [
+            React.createElement(Text, { key: 'title', bold: true, color: 'cyan' }, '📅 Visual Timeline:'),
+            React.createElement(Box, { key: 'spacer' }),
+            ...timelineElements,
+            React.createElement(Box, { key: 'spacer2' }),
+            React.createElement(Text, { key: 'stats', color: 'gray' }, statsLine)
+        ]);
+    }
+
+    /**
+     * Strip ANSI color codes for Ink compatibility
+     */
+    private stripAnsiCodes(text: string): string {
+        // eslint-disable-next-line no-control-regex
+        return text.replace(/\x1b\[[0-9;]*m/g, '');
     }
 
     private renderSearchScreen(state: any, React: any, Box: any, Text: any): any {

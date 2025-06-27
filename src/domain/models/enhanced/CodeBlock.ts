@@ -5,30 +5,38 @@ import { RenderableContent } from '../rendering/RenderableContent.js';
 import { ConversationRenderVisitor } from '../rendering/ConversationRenderVisitor.js';
 
 /**
- * 代码用途类型
- */
-export type CodePurpose = 'example' | 'solution' | 'fix' | 'refactor' | 'test' | 'config';
-
-/**
  * 代码块领域实体
  * 表示对话中的代码片段
  */
 export class CodeBlock extends ConversationElement {
+    public readonly language: string;
+    public readonly content: string;
+    public readonly filename?: string;
+    public readonly lineNumbers?: {
+        start: number;
+        end: number;
+    };
+    public readonly isPartial: boolean;
+    public readonly context?: string;
+
     constructor(
         id: string,
         timestamp: Date,
-        public readonly language: string,
-        public readonly content: string,
-        public readonly filename?: string, // 关联文件名
-        public readonly lineNumbers?: {
-            start: number;
-            end: number;
-        },
-        public readonly isPartial: boolean = false, // 是否为部分代码
-        public readonly context?: string, // 代码上下文说明
-        turnNumber: number = 1
+        language: string,
+        content: string,
+        filename?: string, // 关联文件名
+        lineNumbers?: { start: number; end: number },
+        isPartial: boolean = false, // 是否为部分代码
+        context?: string, // 代码上下文说明
+        turnNumber: number = 0
     ) {
         super(id, timestamp, ConversationElementType.CODE_BLOCK, ContentImportance.SECONDARY, turnNumber);
+        this.language = language;
+        this.content = content;
+        this.filename = filename;
+        this.lineNumbers = lineNumbers;
+        this.isPartial = isPartial;
+        this.context = context;
     }
 
     /**
@@ -43,17 +51,19 @@ export class CodeBlock extends ConversationElement {
      */
     getSemanticContext(): SemanticContext {
         return new SemanticContext(
-            false, // 不是用户发起
-            true, // 包含代码
-            false, // 不是工具结果
-            this.turnNumber,
-            ContentCategory.CODE,
-            [],
+            false, // 非用户发起
+            true, // 包含代码内容
+            false, // 非工具结果
+            this.turnNumber, // 对话轮次
+            ContentCategory.CODE, // 代码类型
+            this.filename ? [this.filename] : [], // 关联文件
             {
                 language: this.language,
-                filename: this.filename,
+                purpose: this.getCodePurpose(),
+                isPartial: this.isPartial,
+                complexity: this.getComplexityScore(),
                 lineCount: this.getLineCount(),
-                purpose: this.getCodePurpose()
+                hasDocumentation: this.hasDocumentation()
             }
         );
     }
@@ -62,11 +72,16 @@ export class CodeBlock extends ConversationElement {
      * 获取内容摘要
      */
     getSummary(): string {
-        const purpose = this.getCodePurpose();
         const lineCount = this.getLineCount();
-        const preview = this.getPreview(3);
-        
-        return `${this.language} ${purpose} (${lineCount} lines): ${preview}`;
+        const purpose = this.getCodePurpose();
+        const purposeIndicator = this.getCodePurposeIndicator(purpose);
+
+        let summary = `${this.language}代码, ${lineCount}行`;
+
+        if (this.filename) summary += `, 文件: ${this.filename}`;
+        if (this.isPartial) summary += ' (部分)';
+
+        return `${purposeIndicator} ${summary}`;
     }
 
     /**
@@ -78,12 +93,18 @@ export class CodeBlock extends ConversationElement {
                 return true;
             case 'executable':
                 return this.isExecutableCode();
+            case 'configuration':
+                return this.isConfigurationCode();
             case 'test':
                 return this.isTestCode();
-            case 'config':
-                return this.isConfigurationCode();
             case 'documentation':
                 return this.hasDocumentation();
+            case 'partial':
+                return this.isPartial;
+            case 'complete':
+                return !this.isPartial && this.isCompleteCode();
+            case 'complex':
+                return this.getComplexityScore() > 5;
             default:
                 return false;
         }
@@ -92,12 +113,26 @@ export class CodeBlock extends ConversationElement {
     /**
      * 领域方法：获取代码用途
      */
-    getCodePurpose(): CodePurpose {
-        if (this.isTestCode()) return 'test';
+    getCodePurpose(): string {
+        const content = this.content.toLowerCase();
+        const filename = this.filename?.toLowerCase() || '';
+
+        // 配置文件检测 - 先检测，因为配置文件优先级高
         if (this.isConfigurationCode()) return 'config';
-        if (this.isFixCode()) return 'fix';
-        if (this.isRefactorCode()) return 'refactor';
-        if (this.isExampleCode()) return 'example';
+
+        // 测试代码检测
+        if (this.isTestCode()) return 'test';
+
+        // 重构代码检测 - 在修复检测之前，因为重构关键词更具体
+        if (this.isRefactorCode(content)) return 'refactor';
+
+        // 修复代码检测
+        if (this.isFixCode(content)) return 'fix';
+
+        // 示例代码检测
+        if (this.isExampleCode(content)) return 'example';
+
+        // 默认为解决方案
         return 'solution';
     }
 
@@ -105,41 +140,45 @@ export class CodeBlock extends ConversationElement {
      * 领域方法：计算代码复杂度
      */
     getComplexityScore(): number {
-        let score = 1;
-        
-        // 基于语言复杂度
-        score += this.getLanguageComplexity();
-        
-        // 基于代码长度
+        let score = 0;
+        const content = this.content;
+
+        // 行数评分 (improved scaling for very large code blocks)
         const lineCount = this.getLineCount();
-        if (lineCount > 100) score += 3;
-        else if (lineCount > 50) score += 2;
-        else if (lineCount > 20) score += 1;
-        
-        // 基于结构复杂度
-        score += this.analyzeStructureComplexity();
-        
-        return Math.min(score, 5);
+        if (lineCount <= 100) {
+            score += Math.floor(lineCount / 10);
+        } else if (lineCount <= 1000) {
+            score += 10 + Math.floor((lineCount - 100) / 50);
+        } else {
+            score += 28 + Math.floor((lineCount - 1000) / 200);
+        }
+
+        // 语言复杂度
+        const languageComplexity = this.getLanguageComplexity();
+        score += languageComplexity;
+
+        // 代码结构复杂度
+        const structureComplexity = this.analyzeStructureComplexity(content);
+        score += structureComplexity;
+
+        // 部分代码通常更复杂（需要上下文理解）
+        if (this.isPartial) score += 2;
+
+        return Math.round(score);
     }
 
     /**
      * 获取代码行数
      */
     getLineCount(): number {
-        if (this.lineNumbers) {
-            return this.lineNumbers.end - this.lineNumbers.start + 1;
-        }
-        return this.content.split('\n').length;
+        return this.content.split('\n').filter(line => line.trim().length > 0).length;
     }
 
     /**
      * 检查是否为可执行代码
      */
     isExecutableCode(): boolean {
-        const executableLanguages = [
-            'javascript', 'typescript', 'python', 'java', 'csharp', 'cpp', 'c',
-            'go', 'rust', 'php', 'ruby', 'scala', 'kotlin'
-        ];
+        const executableLanguages = ['javascript', 'typescript', 'python', 'java', 'c', 'cpp', 'go', 'rust', 'ruby'];
         return executableLanguages.includes(this.language.toLowerCase());
     }
 
@@ -147,195 +186,218 @@ export class CodeBlock extends ConversationElement {
      * 检查是否为测试代码
      */
     isTestCode(): boolean {
-        const testIndicators = [
-            'test', 'spec', 'describe', 'it(', 'expect', 'assert',
-            'TestCase', 'unittest', 'pytest', 'jest'
-        ];
-        return testIndicators.some(indicator => this.content.includes(indicator));
+        const content = this.content.toLowerCase();
+        const filename = this.filename?.toLowerCase() || '';
+
+        const testKeywords = ['test', 'spec', 'describe', 'it(', 'expect', 'assert', 'mock'];
+        const testFiles = ['.test.', '.spec.', '__test__', '__tests__'];
+
+        return testKeywords.some(keyword => content.includes(keyword)) ||
+            testFiles.some(pattern => filename.includes(pattern));
     }
 
     /**
      * 检查是否为配置代码
      */
     isConfigurationCode(): boolean {
-        const configLanguages = ['json', 'yaml', 'yml', 'toml', 'ini', 'xml'];
-        const configIndicators = ['config', 'settings', 'package.json', 'tsconfig'];
-        
+        const configLanguages = ['json', 'yaml', 'yml', 'toml', 'ini', 'env'];
+        const configFiles = ['config', '.env', 'package.json', 'tsconfig', 'webpack', 'vite'];
+        const filename = this.filename?.toLowerCase() || '';
+
         return configLanguages.includes(this.language.toLowerCase()) ||
-               configIndicators.some(indicator => 
-                   this.filename?.toLowerCase().includes(indicator) ||
-                   this.content.includes(indicator)
-               );
+            configFiles.some(pattern => filename.includes(pattern));
     }
 
     /**
      * 检查是否包含文档
      */
     hasDocumentation(): boolean {
-        const docIndicators = ['/**', '///', '"""', "'''", '@param', '@return', '@description'];
-        return docIndicators.some(indicator => this.content.includes(indicator));
+        const content = this.content;
+        const docPatterns = [
+            /\/\*\*[\s\S]*?\*\//, // JSDoc
+            /"""[\s\S]*?"""/, // Python docstring
+            /<!--[\s\S]*?-->/, // HTML comments
+            /^\s*#(?!#).*$/m, // Single line comments starting with # (not markdown headers)
+            /\/\/.*/ // JavaScript comments
+        ];
+
+        return docPatterns.some(pattern => pattern.test(content));
     }
 
     /**
      * 检查是否为完整代码
      */
     isCompleteCode(): boolean {
-        if (this.isPartial) return false;
-        
-        // 基于语言的完整性检查
-        switch (this.language.toLowerCase()) {
-            case 'javascript':
-            case 'typescript':
-                return this.content.includes('{') && this.content.includes('}');
-            case 'python':
-                return this.content.includes(':') || this.content.includes('def ');
-            case 'java':
-            case 'csharp':
-                return this.content.includes('class ') || this.content.includes('public ');
-            default:
-                return !this.content.includes('...');
-        }
+        const content = this.content.toLowerCase();
+        const incompleteMarkers = ['...', 'todo', 'fixme', '// more code', '# more code'];
+        return !incompleteMarkers.some(marker => content.includes(marker));
     }
 
     /**
      * 获取语言复杂度评分
      */
-    private getLanguageComplexity(): number {
+    getLanguageComplexity(): number {
         const complexityMap: Record<string, number> = {
-            'assembly': 4,
-            'cpp': 3,
-            'rust': 3,
-            'haskell': 3,
-            'scala': 3,
-            'java': 2,
-            'csharp': 2,
-            'typescript': 2,
-            'javascript': 1,
-            'python': 1,
-            'go': 1,
-            'ruby': 1,
-            'php': 1,
-            'html': 0,
-            'css': 0,
-            'json': 0,
-            'yaml': 0
+            'assembly': 5,
+            'rust': 4,
+            'cpp': 4,
+            'c': 3,
+            'java': 3,
+            'typescript': 3,
+            'javascript': 2,
+            'python': 2,
+            'go': 2,
+            'ruby': 2,
+            'html': 1,
+            'css': 1,
+            'json': 1,
+            'yaml': 1,
+            'markdown': 1
         };
-        
-        return complexityMap[this.language.toLowerCase()] || 1;
+
+        return complexityMap[this.language.toLowerCase()] || 2;
     }
 
     /**
      * 分析代码结构复杂度
      */
-    private analyzeStructureComplexity(): number {
+    analyzeStructureComplexity(content: string): number {
         let complexity = 0;
-        
-        // 嵌套级别
-        complexity += this.calculateMaxNesting();
-        
-        // 函数/方法数量
-        const functionCount = (this.content.match(/function|def |class |method/g) || []).length;
-        complexity += Math.min(functionCount, 3);
-        
-        // 条件语句数量
-        const conditionalCount = (this.content.match(/if|else|switch|case|while|for/g) || []).length;
-        complexity += Math.min(conditionalCount, 2);
-        
-        return Math.min(complexity, 3);
+
+        // 控制结构
+        const controlStructures = ['if', 'else', 'for', 'while', 'switch', 'case', 'try', 'catch'];
+        controlStructures.forEach(structure => {
+            const matches = content.match(new RegExp(`\\b${structure}\\b`, 'g'));
+            if (matches) complexity += matches.length * 0.5;
+        });
+
+        // 函数/方法定义
+        const functionPatterns = [
+            /function\s+\w+/g,
+            /def\s+\w+/g,
+            /class\s+\w+/g,
+            /interface\s+\w+/g
+        ];
+
+        functionPatterns.forEach(pattern => {
+            const matches = content.match(pattern);
+            if (matches) complexity += matches.length;
+        });
+
+        // 嵌套级别（简单估算）
+        const maxNesting = this.calculateMaxNesting(content);
+        complexity += maxNesting;
+
+        return Math.round(complexity);
     }
 
     /**
      * 计算最大嵌套级别
      */
-    private calculateMaxNesting(): number {
+    calculateMaxNesting(content: string): number {
         let maxNesting = 0;
         let currentNesting = 0;
-        
-        for (const char of this.content) {
-            if (char === '{' || char === '(' || char === '[') {
+
+        for (const char of content) {
+            if (char === '{' || char === '(') {
                 currentNesting++;
                 maxNesting = Math.max(maxNesting, currentNesting);
-            } else if (char === '}' || char === ')' || char === ']') {
-                currentNesting--;
+            } else if (char === '}' || char === ')') {
+                currentNesting = Math.max(0, currentNesting - 1);
             }
         }
-        
-        return Math.min(maxNesting, 3);
+
+        return maxNesting;
     }
 
     /**
      * 检查是否为修复代码
      */
-    private isFixCode(): boolean {
-        return this.getCodePurposeIndicator(['fix', 'bug', 'error', 'correction']);
+    isFixCode(content: string): boolean {
+        const contextLower = this.context?.toLowerCase() || '';
+        const fixKeywords = ['fix', 'bug', 'error', 'issue', 'problem', 'correct'];
+
+        // 只检查上下文，避免误判（比如 "error handling" 不应该算修复）
+        return fixKeywords.some(keyword => 
+            contextLower.includes(`fix ${keyword}`) ||
+            contextLower.includes(`${keyword} fix`) ||
+            contextLower.startsWith('fix ') ||
+            contextLower === 'fix'
+        );
     }
 
     /**
      * 检查是否为重构代码
      */
-    private isRefactorCode(): boolean {
-        return this.getCodePurposeIndicator(['refactor', 'improve', 'optimize', 'clean']);
+    isRefactorCode(content: string): boolean {
+        const contextLower = this.context?.toLowerCase() || '';
+        const refactorKeywords = ['refactor', 'optimize', 'improve', 'clean', 'restructure'];
+        return refactorKeywords.some(keyword => contextLower.includes(keyword));
     }
 
     /**
      * 检查是否为示例代码
      */
-    private isExampleCode(): boolean {
-        return this.getCodePurposeIndicator(['example', 'demo', 'sample', 'tutorial']);
+    isExampleCode(content: string): boolean {
+        const exampleKeywords = ['example', 'demo', 'sample', 'template'];
+        return exampleKeywords.some(keyword => 
+            this.context?.toLowerCase().includes(keyword) ||
+            content.includes(keyword)
+        );
     }
 
     /**
      * 获取代码用途指示器
      */
-    private getCodePurposeIndicator(keywords: string[]): boolean {
-        const contextText = (this.context || '').toLowerCase();
-        const contentText = this.content.toLowerCase();
-        
-        return keywords.some(keyword => 
-            contextText.includes(keyword) || contentText.includes(keyword)
-        );
+    getCodePurposeIndicator(purpose: string): string {
+        const indicators: Record<string, string> = {
+            'example': '📝',
+            'solution': '💻',
+            'fix': '🔧',
+            'refactor': '🔄',
+            'test': '🧪',
+            'config': '⚙️'
+        };
+
+        return indicators[purpose] || '💻';
     }
 
     /**
      * 获取代码预览（用于摘要显示）
      */
-    getPreview(maxLines: number = 5): string {
+    getPreview(maxLines: number = 3): string {
         const lines = this.content.split('\n');
-        const previewLines = lines.slice(0, maxLines);
-        
-        if (lines.length > maxLines) {
-            previewLines.push('...');
-        }
-        
-        return previewLines.join(' ').replace(/\s+/g, ' ').trim();
+        if (lines.length <= maxLines) return this.content;
+        return lines.slice(0, maxLines).join('\n') + '\n...';
     }
 
     /**
      * 估算阅读时间（分钟）
      */
     estimateReadingTime(): number {
+        const linesPerMinute = 20; // 代码阅读速度
         const lineCount = this.getLineCount();
         const complexity = this.getComplexityScore();
-        
-        // 基础阅读时间：每行30秒
-        let time = lineCount * 0.5;
-        
-        // 复杂度调整
-        time *= (1 + complexity * 0.2);
-        
-        return Math.max(Math.ceil(time), 1);
+
+        // 复杂度影响阅读时间
+        const complexityMultiplier = 1 + (complexity / 10);
+        const baseTime = Math.ceil(lineCount / linesPerMinute);
+        return Math.max(1, Math.round(baseTime * complexityMultiplier));
     }
 
     /**
      * 检查代码语法有效性（简单检查）
      */
     isValidSyntax(): boolean {
-        // 基本的语法检查
-        const brackets = this.content.match(/[{}()\[\]]/g) || [];
-        const openBrackets = brackets.filter(b => ['{', '(', '['].includes(b)).length;
-        const closeBrackets = brackets.filter(b => ['}', ')', ']'].includes(b)).length;
-        
-        // 括号匹配检查
-        return openBrackets === closeBrackets;
+        const content = this.content.trim();
+        if (!content) return true; // Empty/whitespace-only content is technically valid
+
+        // 简单的语法检查
+        const openBraces = (content.match(/\{/g) || []).length;
+        const closeBraces = (content.match(/\}/g) || []).length;
+        const openParens = (content.match(/\(/g) || []).length;
+        const closeParens = (content.match(/\)/g) || []).length;
+
+        return openBraces === closeBraces && openParens === closeParens;
     }
 }

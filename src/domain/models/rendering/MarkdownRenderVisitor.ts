@@ -249,7 +249,7 @@ export class MarkdownRenderVisitor implements ConversationRenderVisitor {
         
         metadata += `**Model:** ${response.model}\n\n`;
         metadata += `**Response Type:** ${response.getResponseType()}\n\n`;
-        metadata += `**Token Usage:** ${response.usage.inputTokens} in / ${response.usage.outputTokens} out\n\n`;
+        metadata += `**Token Usage:** ${response.usage.input_tokens} in / ${response.usage.output_tokens} out\n\n`;
         
         if (response.codeBlocks.length > 0) {
             metadata += `**Code Blocks:** ${response.codeBlocks.length}\n\n`;

@@ -12,7 +12,7 @@ export interface UserQuestion {
 export interface AssistantResponse {
     readonly id: string;
     readonly textContent: string;
-    readonly model: string;
+    readonly model?: string;
     getResponseType(): string;
     getSummary(): string;
 }

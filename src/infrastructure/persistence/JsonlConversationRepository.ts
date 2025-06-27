@@ -126,13 +126,22 @@ export class JsonlConversationRepository implements ConversationRepository {
 
     private parseMessage(data: any): UserMessage | AssistantMessage | null {
         try {
-            const id = data.id || 'unknown';
-            let timestamp = new Date();
-            if (data.timestamp) {
-                const parsedDate = new Date(data.timestamp);
-                timestamp = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+            const id = data.uuid;
+            // Validate ID exists
+            if (!id || typeof id !== 'string') {
+                return null;
             }
-            const parentId = data.parentId || null;
+            // Validate timestamp before creating Date object
+            const timestampValue = data.timestamp;
+            if (!timestampValue || typeof timestampValue !== 'string') {
+                return null;
+            }
+            const timestamp = new Date(timestampValue);
+            // Check if Date is valid
+            if (isNaN(timestamp.getTime())) {
+                return null;
+            }
+            const parentId = data.parentUuid;
 
             if (data.type === 'user') {
                 // Check if this is a tool result message
@@ -181,7 +190,7 @@ export class JsonlConversationRepository implements ConversationRepository {
                         textParts.push('[Image attached]');
                     }
                 }
-                return new UserMessage(id, timestamp, parentId, textParts.join(' '));
+                return new UserMessage(id, timestamp, parentId, textParts.join('\n'));
             }
         } else {
             // Fallback for unknown format

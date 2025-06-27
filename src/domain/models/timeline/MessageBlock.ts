@@ -36,33 +36,37 @@ export interface TimelineData {
 export class MessageBlockCalculator {
     /**
      * 计算消息块的宽度
-     * 基于消息内容长度，范围 1-5 字符
+     * 基于消息内容长度，范围 1-5 字符 (NPM baseline algorithm)
      */
     static calculateWidth(message: Message): number {
-        const contentLength = message.getContent().length;
+        const content = message.getContent();
+        const contentLength = content.length;
         
-        // 基于内容长度计算基础宽度
+        // NPM baseline算法：基于内容长度计算宽度
+        const lengthFactor = Math.ceil(contentLength / 200);
+        
+        // 基础宽度
         let baseWidth = 1;
-        if (contentLength > 1000) baseWidth = 5;
-        else if (contentLength > 500) baseWidth = 4;
-        else if (contentLength > 200) baseWidth = 3;
-        else if (contentLength > 50) baseWidth = 2;
+        let widthMultiplier = 1;
         
-        // 工具使用增加宽度
+        // 代码块检测 (multiplier: 1.5x)
+        const codeBlockCount = (content.match(/```/g) || []).length / 2;
+        if (codeBlockCount > 0) {
+            widthMultiplier = 1.5;
+        }
+        
+        // 工具使用检测 (multiplier: 1.2x)
         if (message.getType().toString() === 'assistant') {
             const assistantMessage = message as any;
             if (assistantMessage.getToolUses && assistantMessage.getToolUses().length > 0) {
-                baseWidth += Math.min(assistantMessage.getToolUses().length, 2);
+                widthMultiplier = Math.max(widthMultiplier, 1.2);
             }
         }
         
-        // 代码块增加宽度
-        const codeBlockCount = (message.getContent().match(/```/g) || []).length / 2;
-        if (codeBlockCount > 0) {
-            baseWidth += Math.min(Math.ceil(codeBlockCount), 2);
-        }
+        // NPM baseline final calculation
+        const calculatedWidth = Math.ceil(baseWidth + (lengthFactor * widthMultiplier));
         
-        return Math.max(1, Math.min(baseWidth, 5));
+        return Math.max(1, Math.min(calculatedWidth, 5));
     }
 
     /**
@@ -171,7 +175,7 @@ export class MessageBlockCalculator {
     }
 
     /**
-     * 计算当前位置在时间轴上的位置
+     * 计算当前位置在时间轴上的位置 (NPM baseline algorithm)
      */
     static calculateCurrentPosition(blocks: MessageBlock[], currentIndex: number): number {
         if (currentIndex < 0 || currentIndex >= blocks.length) {
@@ -179,12 +183,10 @@ export class MessageBlockCalculator {
         }
         
         let position = 0;
-        for (let i = 0; i < currentIndex; i++) {
+        // NPM baseline: Position at start of current block (not center)
+        for (let i = 0; i < Math.min(currentIndex, blocks.length); i++) {
             position += blocks[i].width;
         }
-        
-        // 添加当前块的一半宽度，使指针指向块的中间
-        position += blocks[currentIndex].width / 2;
         
         return position;
     }

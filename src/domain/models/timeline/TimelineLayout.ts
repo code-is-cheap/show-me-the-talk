@@ -62,7 +62,7 @@ export class TimelineLayoutCalculator {
         let currentPosition = 0;
         
         for (const block of blocks) {
-            positions.push(currentPosition + block.width / 2); // 块的中心位置
+            positions.push(currentPosition); // 块的起始位置 (not center)
             currentPosition += block.width;
         }
         
@@ -93,8 +93,8 @@ export class TimelineLayoutCalculator {
         let endIndex = blocks.length - 1;
         
         for (let i = 0; i < blocks.length; i++) {
-            const blockStart = blockPositions[i] - blocks[i].width / 2;
-            const blockEnd = blockPositions[i] + blocks[i].width / 2;
+            const blockStart = blockPositions[i];
+            const blockEnd = blockPositions[i] + blocks[i].width;
             
             if (blockEnd >= viewportStart && startIndex === 0) {
                 startIndex = i;

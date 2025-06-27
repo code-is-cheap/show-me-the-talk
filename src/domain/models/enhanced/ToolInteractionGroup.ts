@@ -1,65 +1,42 @@
 import { ConversationElement } from './ConversationElement.js';
 import { ConversationElementType, ContentImportance, ContentCategory } from './ConversationElementType.js';
-import { ToolUse } from './ResponseTypes.js';
 import { SemanticContext } from '../rendering/SemanticContext.js';
-import { RenderableContent } from '../rendering/RenderableContent.js';
-import { ConversationRenderVisitor } from '../rendering/ConversationRenderVisitor.js';
-
-/**
- * 工具交互用途类型
- */
-export type ToolInteractionPurpose = 
-    | 'file-management' 
-    | 'code-analysis' 
-    | 'information-gathering' 
-    | 'system-operation' 
-    | 'debugging' 
-    | 'content-creation' 
-    | 'data-processing';
-
-/**
- * 工具统计信息接口
- */
-export interface ToolStatistics {
-    totalCount: number;
-    successfulCount: number;
-    failedCount: number;
-    criticalCount: number;
-    averageExecutionTime: number | null;
-    toolBreakdown: Record<string, number>;
-}
+import { ToolUse } from './ResponseTypes.js';
 
 /**
  * 工具交互组领域实体
  * 表示一组相关的工具调用和结果
  */
 export class ToolInteractionGroup extends ConversationElement {
+    public readonly toolUses: ToolUse[];
+    public readonly purpose: string;
+    public readonly context?: string;
+    public readonly isSuccessful: boolean;
+    public readonly totalDuration?: number;
+
     constructor(
         id: string,
         timestamp: Date,
-        public readonly toolUses: ToolUse[],
-        public readonly purpose: ToolInteractionPurpose,
-        public readonly context?: string, // 交互上下文说明
-        public readonly isSuccessful: boolean = true, // 整组交互是否成功
-        public readonly totalDuration?: number, // 总执行时间（毫秒）
-        turnNumber: number = 1
+        toolUses: ToolUse[],
+        purpose: string,
+        context?: string, // 交互上下文说明
+        isSuccessful: boolean = true, // 整组交互是否成功
+        totalDuration?: number, // 总执行时间（毫秒）
+        turnNumber: number = 0
     ) {
         super(id, timestamp, ConversationElementType.TOOL_INTERACTION_GROUP, ContentImportance.SECONDARY, turnNumber);
+        this.toolUses = toolUses;
+        this.purpose = purpose;
+        this.context = context;
+        this.isSuccessful = isSuccessful;
+        this.totalDuration = totalDuration;
     }
 
     /**
      * 访问者模式实现
      */
-    accept(visitor: ConversationRenderVisitor): RenderableContent {
-        // Convert to lightweight interface for visitor
-        const visitorInterface = {
-            id: this.id,
-            description: this.getSummary(),
-            isSuccessful: this.isSuccessful,
-            interactions: this.toolUses,
-            getSummary: () => this.getSummary()
-        };
-        return visitor.visitToolInteractionGroup(visitorInterface);
+    accept<T>(visitor: { visitToolInteractionGroup(group: ToolInteractionGroup): T }): T {
+        return visitor.visitToolInteractionGroup(this);
     }
 
     /**
@@ -67,18 +44,19 @@ export class ToolInteractionGroup extends ConversationElement {
      */
     getSemanticContext(): SemanticContext {
         return new SemanticContext(
-            false, // 不是用户发起
-            this.hasCodeContent(),
-            true, // 是工具结果
-            this.turnNumber,
-            ContentCategory.ACTION,
-            this.toolUses.map(tu => tu.id),
+            false, // 非用户发起
+            this.hasCodeContent(), // 是否包含代码
+            true, // 工具结果
+            this.turnNumber, // 对话轮次
+            ContentCategory.ACTION, // 操作类型
+            this.getRelatedFiles(), // 关联文件
             {
                 purpose: this.purpose,
                 toolCount: this.toolUses.length,
                 isSuccessful: this.isSuccessful,
-                primaryTool: this.getPrimaryTool(),
-                statistics: this.getToolStatistics()
+                hasCriticalOperations: this.hasCriticalOperations(),
+                totalDuration: this.totalDuration,
+                primaryTool: this.getPrimaryTool()
             }
         );
     }
@@ -87,16 +65,16 @@ export class ToolInteractionGroup extends ConversationElement {
      * 获取内容摘要
      */
     getSummary(): string {
-        const primaryTool = this.getPrimaryTool();
         const toolCount = this.toolUses.length;
-        const status = this.isSuccessful ? 'successful' : 'failed';
-        const purposeText = this.getPurposeIndicator();
-        
-        if (toolCount === 1) {
-            return `${primaryTool}: ${purposeText} (${status})`;
-        } else {
-            return `${toolCount} tools: ${purposeText} (${status})`;
-        }
+        const primaryTool = this.getPrimaryTool();
+        const purposeIndicator = this.getPurposeIndicator();
+        const statusIndicator = this.isSuccessful ? '✅' : '❌';
+
+        let summary = `${toolCount}个工具操作`;
+        if (primaryTool) summary += ` (主要: ${primaryTool})`;
+        if (this.totalDuration) summary += ` - ${this.totalDuration}ms`;
+
+        return `${purposeIndicator}${statusIndicator} ${summary}`;
     }
 
     /**
@@ -106,18 +84,26 @@ export class ToolInteractionGroup extends ConversationElement {
         switch (type) {
             case 'tools':
                 return true;
+            case 'critical':
+                return this.hasCriticalOperations();
+            case 'successful':
+                return this.isSuccessful;
+            case 'failed':
+                return !this.isSuccessful;
             case 'file-operations':
                 return this.hasFileOperations();
-            case 'search':
+            case 'search-operations':
                 return this.hasSearchOperations();
-            case 'system':
+            case 'system-operations':
                 return this.hasSystemOperations();
             case 'code':
                 return this.hasCodeContent();
-            case 'critical':
-                return this.hasCriticalOperations();
+            case 'slow':
+                return this.isSlow();
+            case 'complex':
+                return this.isComplex();
             default:
-                return false;
+                return this.purpose === type;
         }
     }
 
@@ -127,14 +113,27 @@ export class ToolInteractionGroup extends ConversationElement {
     getPrimaryTool(): string | null {
         if (this.toolUses.length === 0) return null;
         
-        // 按使用频率排序
-        const toolCounts = this.toolUses.reduce((acc, tool) => {
-            acc[tool.toolName] = (acc[tool.toolName] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
+        // 如果只有一个工具，直接返回
+        if (this.toolUses.length === 1) return this.toolUses[0].toolName;
         
-        return Object.entries(toolCounts)
-            .sort(([, a], [, b]) => b - a)[0][0];
+        // 统计工具使用频率
+        const toolCounts = new Map<string, number>();
+        for (const toolUse of this.toolUses) {
+            const count = toolCounts.get(toolUse.toolName) || 0;
+            toolCounts.set(toolUse.toolName, count + 1);
+        }
+        
+        // 返回使用最多的工具
+        let maxCount = 0;
+        let primaryTool: string | null = null;
+        for (const [tool, count] of toolCounts) {
+            if (count > maxCount) {
+                maxCount = count;
+                primaryTool = tool;
+            }
+        }
+        
+        return primaryTool;
     }
 
     /**
@@ -172,7 +171,15 @@ export class ToolInteractionGroup extends ConversationElement {
         return this.toolUses.some(tool => {
             const result = tool.result;
             if (typeof result === 'string') {
-                return result.includes('```') || result.includes('function') || result.includes('class');
+                return /```|`/.test(result) ||
+                    result.includes('function') ||
+                    result.includes('class ') ||
+                    result.includes('import ') ||
+                    result.includes('export ') ||
+                    /=>\s*\{/.test(result) || // Arrow functions
+                    result.includes('const ') ||
+                    result.includes('let ') ||
+                    result.includes('var ');
             }
             return false;
         });
@@ -182,19 +189,18 @@ export class ToolInteractionGroup extends ConversationElement {
      * 领域方法：检查是否为慢操作
      */
     isSlow(): boolean {
-        if (this.totalDuration && this.totalDuration > 5000) return true;
-        
-        const avgTime = this.calculateAverageExecutionTime();
-        return avgTime !== null && avgTime > 2000;
+        const slowThreshold = 2000; // 2秒
+        return this.totalDuration ? this.totalDuration > slowThreshold : 
+            this.toolUses.some(tool => tool.executionTime && tool.executionTime > slowThreshold);
     }
 
     /**
      * 领域方法：检查是否为复杂操作
      */
     isComplex(): boolean {
-        return this.toolUses.length > 5 || 
-               this.hasCriticalOperations() ||
-               this.getUniqueToolTypes().length > 3;
+        return this.toolUses.length > 5 ||
+            this.hasCriticalOperations() ||
+            this.getUniqueToolTypes().length > 3;
     }
 
     /**
@@ -203,22 +209,21 @@ export class ToolInteractionGroup extends ConversationElement {
     getRelatedFiles(): string[] {
         const files = new Set<string>();
         
-        this.toolUses.forEach(tool => {
-            const params = tool.parameters;
-            
-            // 常见的文件参数名
-            ['file_path', 'path', 'filename', 'filepath'].forEach(paramName => {
-                if (params[paramName] && typeof params[paramName] === 'string') {
-                    files.add(params[paramName]);
-                }
-            });
+        for (const toolUse of this.toolUses) {
+            const params = toolUse.parameters;
+            // 检查常见的文件参数
+            if (params.file_path) files.add(params.file_path);
+            if (params.notebook_path) files.add(params.notebook_path);
+            if (params.path) files.add(params.path);
             
             // 从结果中提取文件路径
-            if (typeof tool.result === 'string') {
-                const pathMatches = tool.result.match(/\/[^\s]+\.(ts|js|json|md|txt|py|java|cpp|c)/g);
-                pathMatches?.forEach(path => files.add(path));
+            if (typeof toolUse.result === 'string') {
+                const fileMatches = toolUse.result.match(/\/[^\s]+\.(js|ts|py|md|json|yaml|yml|toml|ini)/g);
+                if (fileMatches) {
+                    fileMatches.forEach(file => files.add(file));
+                }
             }
-        });
+        }
         
         return Array.from(files);
     }
@@ -234,62 +239,68 @@ export class ToolInteractionGroup extends ConversationElement {
     /**
      * 获取工具统计信息
      */
-    getToolStatistics(): ToolStatistics {
-        return {
+    getToolStatistics(): {
+        totalCount: number;
+        successfulCount: number;
+        failedCount: number;
+        criticalCount: number;
+        averageExecutionTime: number | null;
+        toolBreakdown: Record<string, number>;
+    } {
+        const statistics = {
             totalCount: this.toolUses.length,
-            successfulCount: this.toolUses.filter(t => t.isSuccessful).length,
-            failedCount: this.toolUses.filter(t => !t.isSuccessful).length,
-            criticalCount: this.toolUses.filter(t => t.isCriticalOperation()).length,
+            successfulCount: this.toolUses.filter(tool => tool.isSuccessful).length,
+            failedCount: this.toolUses.filter(tool => !tool.isSuccessful).length,
+            criticalCount: this.toolUses.filter(tool => tool.isCriticalOperation()).length,
             averageExecutionTime: this.calculateAverageExecutionTime(),
             toolBreakdown: this.getToolBreakdown()
         };
+        
+        return statistics;
     }
 
     /**
      * 计算平均执行时间
      */
-    private calculateAverageExecutionTime(): number | null {
+    calculateAverageExecutionTime(): number | null {
         const timings = this.toolUses
             .map(tool => tool.executionTime)
-            .filter((time): time is number => time !== undefined);
-        
+            .filter((time): time is number => time !== undefined && time > 0); // Filter out invalid times
+
         if (timings.length === 0) return null;
         
-        return timings.reduce((sum, time) => sum + time, 0) / timings.length;
+        return Math.round(timings.reduce((sum, time) => sum + time, 0) / timings.length);
     }
 
     /**
      * 获取工具分解统计
      */
-    private getToolBreakdown(): Record<string, number> {
-        return this.toolUses.reduce((breakdown, tool) => {
-            breakdown[tool.toolName] = (breakdown[tool.toolName] || 0) + 1;
-            return breakdown;
-        }, {} as Record<string, number>);
+    getToolBreakdown(): Record<string, number> {
+        const breakdown: Record<string, number> = {};
+        
+        for (const toolUse of this.toolUses) {
+            const category = toolUse.getToolCategory();
+            breakdown[category] = (breakdown[category] || 0) + 1;
+        }
+        
+        return breakdown;
     }
 
     /**
      * 获取用途指示器
      */
-    private getPurposeIndicator(): string {
-        switch (this.purpose) {
-            case 'file-management':
-                return 'managing files';
-            case 'code-analysis':
-                return 'analyzing code';
-            case 'information-gathering':
-                return 'gathering information';
-            case 'system-operation':
-                return 'system operations';
-            case 'debugging':
-                return 'debugging';
-            case 'content-creation':
-                return 'creating content';
-            case 'data-processing':
-                return 'processing data';
-            default:
-                return 'tool operations';
-        }
+    getPurposeIndicator(): string {
+        const indicators: Record<string, string> = {
+            'file-management': '📁',
+            'code-analysis': '🔍',
+            'information-gathering': '📊',
+            'system-operation': '⚙️',
+            'debugging': '🐛',
+            'content-creation': '✨',
+            'data-processing': '📈'
+        };
+        
+        return indicators[this.purpose] || '🔧';
     }
 
     /**
@@ -310,16 +321,12 @@ export class ToolInteractionGroup extends ConversationElement {
      * 估算影响范围
      */
     estimateImpactScope(): 'low' | 'medium' | 'high' {
-        let score = 0;
-        
-        if (this.hasCriticalOperations()) score += 3;
-        if (this.hasFileOperations()) score += 2;
-        if (this.hasSystemOperations()) score += 2;
-        if (this.toolUses.length > 5) score += 1;
-        if (this.getRelatedFiles().length > 3) score += 1;
-        
-        if (score >= 5) return 'high';
-        if (score >= 3) return 'medium';
+        const criticalOps = this.getCriticalOperations().length;
+        const fileCount = this.getRelatedFiles().length;
+        const toolCount = this.toolUses.length;
+
+        if (criticalOps > 2 || fileCount > 10 || toolCount > 10) return 'high';
+        if (criticalOps > 0 || fileCount > 3 || toolCount > 5) return 'medium';
         return 'low';
     }
 
@@ -327,22 +334,11 @@ export class ToolInteractionGroup extends ConversationElement {
      * 获取操作摘要文本
      */
     getOperationSummary(): string {
-        const stats = this.getToolStatistics();
-        const impact = this.estimateImpactScope();
+        const purpose = this.purpose.replace('-', ' ');
+        const toolCount = this.toolUses.length;
+        const status = this.isSuccessful ? 'successful' : 'failed';
         
-        let summary = `Executed ${stats.totalCount} tool operations`;
-        
-        if (stats.failedCount > 0) {
-            summary += ` (${stats.failedCount} failed)`;
-        }
-        
-        if (stats.criticalCount > 0) {
-            summary += ` including ${stats.criticalCount} critical operations`;
-        }
-        
-        summary += ` with ${impact} impact`;
-        
-        return summary;
+        return `${purpose} operation with ${toolCount} tools (${status})`;
     }
 
     /**
@@ -350,29 +346,15 @@ export class ToolInteractionGroup extends ConversationElement {
      */
     canRetryFailedOperations(): boolean {
         const failedOps = this.getFailedOperations();
-        
-        // 如果没有失败操作，则不需要重试
-        if (failedOps.length === 0) return false;
-        
-        // 检查失败原因是否可重试
-        return failedOps.some(op => {
-            const errorMsg = op.errorMessage?.toLowerCase() || '';
-            
-            // 网络或临时错误通常可重试
-            const retryableErrors = ['timeout', 'network', 'temporary', 'rate limit', 'busy'];
-            return retryableErrors.some(error => errorMsg.includes(error));
-        });
+        return failedOps.length > 0 && failedOps.every(op => !op.isCriticalOperation());
     }
 
     /**
      * 获取预览内容（用于摘要显示）
      */
-    getPreview(maxLength: number = 150): string {
+    getPreview(maxLength: number = 100): string {
         const summary = this.getOperationSummary();
-        
-        if (summary.length <= maxLength) {
-            return summary;
-        }
+        if (summary.length <= maxLength) return summary;
         
         return summary.substring(0, maxLength) + '...';
     }
@@ -385,12 +367,11 @@ export class ToolInteractionGroup extends ConversationElement {
             return Math.ceil(this.totalDuration / 60000); // 转换为分钟
         }
         
-        const avgTime = this.calculateAverageExecutionTime();
-        if (avgTime) {
-            return Math.ceil((avgTime * this.toolUses.length) / 60000);
-        }
+        // 基于工具数量和类型估算
+        const baseTime = this.toolUses.length * 0.5; // 每个工具0.5分钟
+        const criticalMultiplier = this.hasCriticalOperations() ? 2 : 1;
+        const complexityMultiplier = this.isComplex() ? 1.5 : 1;
         
-        // 基于工具数量的估算
-        return Math.max(1, Math.ceil(this.toolUses.length * 0.5));
+        return Math.max(1, Math.ceil(baseTime * criticalMultiplier * complexityMultiplier));
     }
 }

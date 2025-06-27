@@ -1,12 +1,28 @@
-import { MessageData } from './MessageData.js';
-import { ConversationElement } from './ConversationElement.js';
 import { UserQuestion } from './UserQuestion.js';
 import { AssistantResponse } from './AssistantResponse.js';
 import { CodeBlock } from './CodeBlock.js';
-import { ToolInteractionGroup, ToolInteractionPurpose } from './ToolInteractionGroup.js';
+import { ToolInteractionGroup } from './ToolInteractionGroup.js';
 import { ContentImportance } from './ConversationElementType.js';
-import { QuestionComplexity, QuestionIntent } from './QuestionTypes.js';
 import { TokenUsage, ToolUse } from './ResponseTypes.js';
+
+interface MessageDto {
+    id: string;
+    type: 'user' | 'assistant';
+    content: string;
+    timestamp: string;
+    metadata?: {
+        toolUses?: Array<{
+            id: string;
+            name: string;
+            input: any;
+        }>;
+        usage?: {
+            inputTokens: number;
+            outputTokens: number;
+        };
+        model?: string;
+    };
+}
 
 /**
  * Factory for creating enhanced domain model elements from DTOs
@@ -15,73 +31,52 @@ export class ConversationElementFactory {
     /**
      * Create conversation elements from message DTOs
      */
-    static createElementsFromMessages(messages: MessageData[]): ConversationElement[] {
-        const elements: ConversationElement[] = [];
-        
-        messages.forEach((message, index) => {
-            const turnNumber = Math.floor(index / 2) + 1;
-            
+    static createElementsFromMessages(messages: MessageDto[]): Array<UserQuestion | AssistantResponse | CodeBlock | ToolInteractionGroup> {
+        const elements: Array<UserQuestion | AssistantResponse | CodeBlock | ToolInteractionGroup> = [];
+        let turnNumber = 0;
+
+        for (let i = 0; i < messages.length; i++) {
+            const message = messages[i];
+
             if (message.type === 'user') {
-                const userQuestion = this.createUserQuestion(message, turnNumber, messages, index);
-                elements.push(userQuestion);
+                // Create UserQuestion
+                const question = this.createUserQuestion(message, turnNumber);
+                elements.push(question);
+                turnNumber++;
             } else if (message.type === 'assistant') {
-                const assistantResponse = this.createAssistantResponse(message, turnNumber);
-                elements.push(assistantResponse);
-                
-                // Extract code blocks
+                // Create AssistantResponse with potential code blocks and tools
+                const response = this.createAssistantResponse(message, messages, i, turnNumber);
+                elements.push(response);
+
+                // Extract code blocks if present
                 const codeBlocks = this.extractCodeBlocks(message, turnNumber);
                 elements.push(...codeBlocks);
-                
-                // Create tool interaction group if tools were used
-                if (message.metadata?.toolUses && message.metadata.toolUses.length > 0) {
-                    const toolGroup = this.createToolInteractionGroup(message, turnNumber);
-                    if (toolGroup) {
-                        elements.push(toolGroup);
-                    }
+
+                // Create tool interaction group if present
+                const toolGroup = this.createToolInteractionGroup(message, turnNumber);
+                if (toolGroup) {
+                    elements.push(toolGroup);
                 }
             }
-        });
-        
+        }
+
         return elements;
     }
 
     /**
      * Create UserQuestion from message DTO
      */
-    private static createUserQuestion(
-        message: MessageData, 
-        turnNumber: number, 
-        allMessages: MessageData[], 
-        currentIndex: number
-    ): UserQuestion {
-        // Determine if this is a follow-up question
-        const isFollowUp = currentIndex > 0 && allMessages[currentIndex - 1]?.type === 'assistant';
-        
-        // Find previous question if this is a follow-up
-        let previousQuestionId: string | undefined;
-        if (isFollowUp) {
-            for (let i = currentIndex - 1; i >= 0; i--) {
-                if (allMessages[i].type === 'user') {
-                    previousQuestionId = allMessages[i].id;
-                    break;
-                }
-            }
-        }
-        
-        // Determine complexity based on content
-        const complexity = this.determineQuestionComplexity(message.content);
-        
-        // Determine intent based on content
-        const intent = this.determineQuestionIntent(message.content);
-        
+    static createUserQuestion(message: MessageDto, turnNumber: number): UserQuestion {
+        const timestamp = new Date(message.timestamp);
+
         return new UserQuestion(
             message.id,
-            new Date(message.timestamp),
+            timestamp,
             message.content,
-            isFollowUp,
-            previousQuestionId,
-            complexity,
-            intent,
+            false, // isFollowUp
+            undefined, // previousQuestionId
+            undefined, // complexity - will be auto-determined
+            undefined, // intent - will be auto-determined
             turnNumber
         );
     }
@@ -89,28 +84,39 @@ export class ConversationElementFactory {
     /**
      * Create AssistantResponse from message DTO
      */
-    private static createAssistantResponse(message: MessageData, turnNumber: number): AssistantResponse {
-        const usage = new TokenUsage(
-            message.metadata?.usage?.inputTokens || 0,
-            message.metadata?.usage?.outputTokens || 0
-        );
-        
-        // Extract tool uses
-        const toolUses = (message.metadata?.toolUses || []).map(tool => 
-            new ToolUse(tool.id, tool.name, tool.input)
-        );
-        
-        // Extract code blocks for this response
+    static createAssistantResponse(message: MessageDto, allMessages: MessageDto[], currentIndex: number, turnNumber: number): AssistantResponse {
+        const timestamp = new Date(message.timestamp);
+
+        // Extract code blocks
         const codeBlocks = this.extractCodeBlocks(message, turnNumber);
-        
+
+        // Create tool interactions array - convert to proper ToolUse format
+        const toolInteractions = message.metadata?.toolUses?.map(tool => {
+            // Create a ToolUse instance
+            return new ToolUse(
+                tool.id,
+                tool.name,
+                tool.input,
+                'Tool executed successfully',
+                true,
+                0,
+                undefined
+            );
+        }) || [];
+
+        // Create token usage
+        const tokenUsage = message.metadata?.usage ?
+            new TokenUsage(message.metadata.usage.inputTokens, message.metadata.usage.outputTokens) :
+            new TokenUsage(0, 0);
+
         return new AssistantResponse(
             message.id,
-            new Date(message.timestamp),
+            timestamp,
             message.content,
             codeBlocks,
-            toolUses,
+            toolInteractions,
             message.metadata?.model || 'unknown',
-            usage,
+            tokenUsage,
             undefined, // reasoning
             undefined, // confidence
             turnNumber
@@ -120,162 +126,163 @@ export class ConversationElementFactory {
     /**
      * Extract code blocks from message content
      */
-    private static extractCodeBlocks(message: MessageData, turnNumber: number): CodeBlock[] {
+    static extractCodeBlocks(message: MessageDto, turnNumber: number): CodeBlock[] {
         const codeBlocks: CodeBlock[] = [];
         const content = message.content;
-        
-        // Regex to match code blocks
-        const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+
+        // Regex to match code blocks: ```language\ncode\n```
+        const codeBlockRegex = /```(\w+)?\n([\s\S]*?)\n```/g;
         let match;
         let blockIndex = 0;
-        
+
         while ((match = codeBlockRegex.exec(content)) !== null) {
             const language = match[1] || 'text';
-            const codeContent = match[2];
-            
-            const codeBlock = new CodeBlock(
-                `${message.id}-code-${blockIndex}`,
-                new Date(message.timestamp),
-                language,
-                codeContent,
-                undefined, // filename
-                undefined, // lineNumbers
-                false, // isPartial
-                undefined, // context
-                turnNumber
-            );
-            
-            codeBlocks.push(codeBlock);
-            blockIndex++;
+            const code = match[2];
+
+            if (code.trim()) {
+                const timestamp = new Date(message.timestamp);
+                const importance = this.determineCodeImportance(code, language);
+
+                const codeBlock = new CodeBlock(
+                    `${message.id}-code-${blockIndex}`,
+                    timestamp,
+                    language,
+                    code,
+                    undefined, // filename
+                    undefined, // lineNumbers
+                    false, // isPartial
+                    undefined, // context
+                    turnNumber
+                );
+
+                codeBlocks.push(codeBlock);
+                blockIndex++;
+            }
         }
-        
+
         return codeBlocks;
     }
 
     /**
      * Create tool interaction group from message metadata
      */
-    private static createToolInteractionGroup(message: MessageData, turnNumber: number): ToolInteractionGroup | null {
-        const toolData = message.metadata?.toolUses;
-        if (!toolData || toolData.length === 0) return null;
-        
-        const toolUses = toolData.map(tool => 
-            new ToolUse(tool.id, tool.name, tool.input)
-        );
-        
-        const purpose = this.determinePurpose(toolUses);
-        
+    static createToolInteractionGroup(message: MessageDto, turnNumber: number): ToolInteractionGroup | null {
+        if (!message.metadata?.toolUses || message.metadata.toolUses.length === 0) {
+            return null;
+        }
+
+        const timestamp = new Date(message.timestamp);
+
+        // Convert to proper ToolUse format
+        const toolUses = message.metadata.toolUses.map(tool => {
+            return new ToolUse(
+                tool.id,
+                tool.name,
+                tool.input,
+                'Tool executed successfully',
+                true,
+                0,
+                undefined
+            );
+        });
+
+        // Determine purpose based on tool names
+        const purpose = this.determinePurpose(message.metadata.toolUses);
+
         return new ToolInteractionGroup(
             `${message.id}-tools`,
-            new Date(message.timestamp),
+            timestamp,
             toolUses,
             purpose,
             undefined, // context
-            true, // assume successful if no error info
+            true, // isSuccessful
             undefined, // totalDuration
             turnNumber
         );
     }
 
-    private static determinePurpose(toolUses: ToolUse[]): ToolInteractionPurpose {
-        const toolNames = toolUses.map(t => t.toolName.toLowerCase());
-        
-        if (toolNames.some(name => ['read', 'write', 'edit', 'ls'].some(op => name.includes(op)))) {
+    static determinePurpose(tools: Array<{ name: string; [key: string]: any }>): string {
+        const toolNames = tools.map(t => t.name.toLowerCase());
+
+        if (toolNames.some(name => ['read', 'write', 'edit', 'multiedit'].includes(name))) {
             return 'file-management';
         }
-        
-        if (toolNames.some(name => ['grep', 'glob', 'search'].some(op => name.includes(op)))) {
+
+        if (toolNames.some(name => ['grep', 'glob', 'ls'].includes(name))) {
             return 'information-gathering';
         }
-        
-        if (toolNames.some(name => ['bash', 'command'].some(op => name.includes(op)))) {
+
+        if (toolNames.some(name => ['bash', 'task'].includes(name))) {
             return 'system-operation';
         }
-        
-        return 'code-analysis';
+
+        if (toolNames.some(name => name.includes('test') || name.includes('debug'))) {
+            return 'debugging';
+        }
+
+        return 'information-gathering'; // default
     }
 
     /**
      * Determine content importance based on content analysis
      */
-    private static determineContentImportance(content: string, type: 'user' | 'assistant'): ContentImportance {
-        if (type === 'user') {
+    static determineContentImportance(content: string): ContentImportance {
+        const length = content.length;
+        const hasCodeBlocks = content.includes('```');
+        const hasComplexTerms = /\b(implement|create|build|design|architecture|system|complex|advanced)\b/i.test(content);
+        const hasErrorTerms = /\b(error|bug|issue|problem|fix|debug)\b/i.test(content);
+
+        // Primary importance for critical content
+        if (hasErrorTerms || hasComplexTerms || hasCodeBlocks) {
             return ContentImportance.PRIMARY;
         }
-        
-        // For assistant responses, check length and complexity
-        if (content.length > 1000 || content.includes('```')) {
-            return ContentImportance.PRIMARY;
+
+        // Secondary importance for substantial content
+        if (length > 200) {
+            return ContentImportance.SECONDARY;
         }
-        
-        return ContentImportance.SECONDARY;
+
+        // Tertiary for simple content
+        return ContentImportance.TERTIARY;
     }
 
     /**
      * Determine code block importance
      */
-    private static determineCodeImportance(language: string, content: string): ContentImportance {
-        // Configuration files are usually less important
-        if (['json', 'yaml', 'yml', 'toml'].includes(language.toLowerCase())) {
-            return ContentImportance.TERTIARY;
-        }
-        
-        // Large code blocks are important
-        if (content.split('\n').length > 20) {
+    static determineCodeImportance(code: string, language: string): ContentImportance {
+        const lines = code.split('\n').length;
+        const hasComplexPatterns = /\b(class|function|interface|async|await|import|export)\b/i.test(code);
+        const isConfiguration = /\.(json|yaml|yml|toml|ini|config)$/i.test(language) ||
+            language === 'json' || language === 'yaml';
+
+        // Configuration and complex code is primary
+        if (isConfiguration || hasComplexPatterns || lines > 10) {
             return ContentImportance.PRIMARY;
         }
-        
-        return ContentImportance.SECONDARY;
+
+        // Medium code blocks are secondary
+        if (lines > 3) {
+            return ContentImportance.SECONDARY;
+        }
+
+        return ContentImportance.TERTIARY;
     }
 
     /**
      * Determine tool interaction importance
      */
-    private static determineToolImportance(toolUses: ToolUse[]): ContentImportance {
-        // Critical operations are important
-        if (toolUses.some(tool => tool.isCriticalOperation())) {
+    static determineToolImportance(tools: Array<{ name: string; [key: string]: any }>): ContentImportance {
+        const criticalTools = ['Write', 'Edit', 'MultiEdit', 'Read'];
+        const hasCriticalTools = tools.some(tool => criticalTools.includes(tool.name));
+
+        if (hasCriticalTools || tools.length > 3) {
             return ContentImportance.PRIMARY;
         }
-        
-        // Large number of tools indicates complex operation
-        if (toolUses.length > 5) {
-            return ContentImportance.PRIMARY;
-        }
-        
-        return ContentImportance.SECONDARY;
-    }
 
-    private static determineQuestionComplexity(content: string): QuestionComplexity {
-        if (content.length > 500 || content.includes('```')) {
-            return QuestionComplexity.COMPLEX;
+        if (tools.length > 1) {
+            return ContentImportance.SECONDARY;
         }
-        
-        if (content.length > 200) {
-            return QuestionComplexity.MODERATE;
-        }
-        
-        return QuestionComplexity.SIMPLE;
-    }
 
-    private static determineQuestionIntent(content: string): QuestionIntent {
-        const lowerContent = content.toLowerCase();
-        
-        if (lowerContent.includes('implement') || lowerContent.includes('create') || lowerContent.includes('build')) {
-            return QuestionIntent.IMPLEMENTATION;
-        }
-        
-        if (lowerContent.includes('error') || lowerContent.includes('bug') || lowerContent.includes('fix')) {
-            return QuestionIntent.DEBUGGING;
-        }
-        
-        if (lowerContent.includes('optimize') || lowerContent.includes('improve') || lowerContent.includes('performance')) {
-            return QuestionIntent.OPTIMIZATION;
-        }
-        
-        if (lowerContent.includes('learn') || lowerContent.includes('understand') || lowerContent.includes('explain')) {
-            return QuestionIntent.LEARNING;
-        }
-        
-        return QuestionIntent.GENERAL;
+        return ContentImportance.TERTIARY;
     }
 }

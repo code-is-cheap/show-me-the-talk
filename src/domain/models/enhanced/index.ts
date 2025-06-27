@@ -28,11 +28,9 @@ export { ConversationElement } from './ConversationElement.js';
 // Concrete implementations
 export { UserQuestion } from './UserQuestion.js';
 export { AssistantResponse } from './AssistantResponse.js';
-export { CodeBlock, CodePurpose } from './CodeBlock.js';
+export { CodeBlock } from './CodeBlock.js';
 export { 
-    ToolInteractionGroup, 
-    ToolInteractionPurpose, 
-    ToolStatistics 
+    ToolInteractionGroup
 } from './ToolInteractionGroup.js';
 
 // Factory and data interfaces

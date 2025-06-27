@@ -1,44 +1,29 @@
-import { ConversationElementType, ContentImportance } from './ConversationElementType.js';
-import { SemanticContext } from '../rendering/SemanticContext.js';
-import { RenderableContent } from '../rendering/RenderableContent.js';
-import { ConversationRenderVisitor } from '../rendering/ConversationRenderVisitor.js';
+import { ContentImportance } from './ConversationElementType.js';
 
 /**
  * 对话元素抽象基类
  * 所有对话元素的基础抽象，定义了通用的行为和属性
  */
-export abstract class ConversationElement {
+export class ConversationElement {
+    public readonly id: string;
+    public readonly timestamp: Date;
+    public readonly type: string;
+    public readonly importance: ContentImportance;
+    public readonly turnNumber: number;
+
     constructor(
-        public readonly id: string,
-        public readonly timestamp: Date,
-        public readonly type: ConversationElementType,
-        public readonly importance: ContentImportance,
-        public readonly turnNumber: number = 1
-    ) {}
-
-    /**
-     * 访问者模式核心方法
-     * 允许不同的渲染器处理这个元素
-     */
-    abstract accept(visitor: ConversationRenderVisitor): RenderableContent;
-
-    /**
-     * 获取语义上下文
-     * 提供元素的语义信息用于渲染决策
-     */
-    abstract getSemanticContext(): SemanticContext;
-
-    /**
-     * 获取内容摘要
-     * 用于列表显示和快速预览
-     */
-    abstract getSummary(): string;
-
-    /**
-     * 检查是否包含特定类型的内容
-     * 用于过滤和分类
-     */
-    abstract hasContentType(type: string): boolean;
+        id: string,
+        timestamp: Date,
+        type: string,
+        importance: ContentImportance,
+        turnNumber: number = 0
+    ) {
+        this.id = id;
+        this.timestamp = timestamp;
+        this.type = type;
+        this.importance = importance;
+        this.turnNumber = turnNumber;
+    }
 
     /**
      * 检查是否为主要内容
@@ -72,6 +57,9 @@ export abstract class ConversationElement {
      * 比较两个元素的时间顺序
      */
     compareTo(other: ConversationElement): number {
+        if (this.turnNumber !== other.turnNumber) {
+            return this.turnNumber - other.turnNumber;
+        }
         return this.timestamp.getTime() - other.timestamp.getTime();
     }
 
@@ -79,8 +67,12 @@ export abstract class ConversationElement {
      * 检查是否在指定时间范围内
      */
     isWithinTimeRange(startTime?: Date, endTime?: Date): boolean {
-        if (startTime && this.timestamp < startTime) return false;
-        if (endTime && this.timestamp > endTime) return false;
+        if (startTime && this.timestamp < startTime) {
+            return false;
+        }
+        if (endTime && this.timestamp > endTime) {
+            return false;
+        }
         return true;
     }
 
@@ -94,7 +86,8 @@ export abstract class ConversationElement {
             type: this.type,
             importance: this.importance,
             turnNumber: this.turnNumber,
-            summary: this.getSummary()
+            summary: (this as any).getSummary?.(),
+            semanticContext: (this as any).getSemanticContext?.()
         };
     }
 }

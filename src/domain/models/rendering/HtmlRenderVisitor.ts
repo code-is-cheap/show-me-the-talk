@@ -420,10 +420,14 @@ export class HtmlRenderVisitor implements ConversationRenderVisitor {
     }
 
     /**
-     * 简单的Markdown到HTML转换
+     * 简单的Markdown到HTML转换 (安全版本 - 先转义HTML再处理Markdown)
      */
     private convertMarkdownToHtml(content: string): string {
-        return content
+        // 首先转义所有HTML字符以防止XSS攻击
+        const escapedContent = this.escapeHtml(content);
+        
+        // 然后处理Markdown语法
+        return escapedContent
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
             .replace(/`(.*?)`/g, '<code>$1</code>')

@@ -768,7 +768,7 @@ export class ComprehensiveInkTUI {
         return React.createElement(Box, { flexDirection: 'column' }, [
             React.createElement(Box, { key: 'header', borderStyle: 'single', borderColor: 'blue' }, 
                 React.createElement(Text, { bold: true, color: 'blue' }, 
-                    ` ${conversation.title || 'Conversation'}${modeIndicator} - Message ${state.currentMessageIndex + 1}/${messages.length} `
+                    ` ${this.truncateTitle(conversation.title || 'Conversation', 60)}${modeIndicator} - Message ${state.currentMessageIndex + 1}/${messages.length} `
                 )
             ),
             state.statusMessage && React.createElement(Text, { key: 'status', color: 'cyan' }, `ℹ️  ${state.statusMessage}`),
@@ -1145,6 +1145,13 @@ export class ComprehensiveInkTUI {
         });
         
         return lines;
+    }
+
+    private truncateTitle(title: string, maxWidth: number): string {
+        if (title.length <= maxWidth) {
+            return title;
+        }
+        return title.substring(0, maxWidth - 3) + '...';
     }
 
     private mapToAppExportFormat(format: string): AppExportFormat {

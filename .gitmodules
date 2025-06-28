@@ -1,0 +1,3 @@
+[submodule "claudia"]
+	path = claudia
+	url = https://github.com/getAsterisk/claudia.git

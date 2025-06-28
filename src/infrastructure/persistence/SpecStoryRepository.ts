@@ -41,7 +41,7 @@ export class SpecStoryRepository implements ConversationRepository {
     private readonly specStoryPath: string;
 
     constructor(projectRoot: string) {
-        this.specStoryPath = path.join(projectRoot, '.specstory');
+        this.specStoryPath = path.resolve(projectRoot, '.specstory', 'history');
     }
 
     /**

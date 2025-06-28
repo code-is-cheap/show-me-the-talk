@@ -16,30 +16,30 @@ export class SemanticContext {
     ) {}
 
     /**
-     * 检查是否为交互式内容
+     * 检查是否为交互式内容 (NPM baseline algorithm)
      */
     isInteractive(): boolean {
-        return this.isToolResult || this.hasCodeContent;
+        return this.isUserInitiated || this.isToolResult;
     }
 
     /**
-     * 获取内容复杂度评分
+     * 获取内容复杂度评分 (NPM baseline algorithm)
      */
     getComplexityScore(): number {
-        let score = 1;
+        let score = 0; // NPM baseline starts with 0
         
         if (this.hasCodeContent) score += 2;
         if (this.isToolResult) score += 1;
         if (this.relatedElements.length > 0) score += 1;
-        if (this.conversationTurn > 10) score += 1;
+        // NPM baseline: no turn consideration, no capping
         
-        return Math.min(score, 5);
+        return score;
     }
 
     /**
      * 创建简单的语义上下文
      */
-    static simple(category: ContentCategory, turnNumber: number = 1): SemanticContext {
+    static simple(category: ContentCategory, turnNumber: number = 0): SemanticContext {
         return new SemanticContext(
             false, false, false, turnNumber, category
         );
@@ -48,7 +48,7 @@ export class SemanticContext {
     /**
      * 创建带代码的语义上下文
      */
-    static withCode(category: ContentCategory, turnNumber: number = 1): SemanticContext {
+    static withCode(category: ContentCategory, turnNumber: number = 0): SemanticContext {
         return new SemanticContext(
             false, true, false, turnNumber, category
         );
@@ -57,7 +57,7 @@ export class SemanticContext {
     /**
      * 创建工具相关的语义上下文
      */
-    static forTool(turnNumber: number = 1, relatedElements: string[] = []): SemanticContext {
+    static forTool(turnNumber: number = 0, relatedElements: string[] = []): SemanticContext {
         return new SemanticContext(
             false, false, true, turnNumber, ContentCategory.ACTION, relatedElements
         );

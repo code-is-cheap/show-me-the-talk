@@ -32,7 +32,7 @@ export class ExportFormatValidator {
         const timestamp = new Date().toISOString().split('T')[0];
         const extension = this.getFileExtension(format);
         
-        return `conversation-${timestamp}${extension}`;
+        return `conversations-${timestamp}${extension}`;
     }
 
     static getMimeType(format: ExportFormat): string {

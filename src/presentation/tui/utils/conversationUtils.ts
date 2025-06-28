@@ -1,4 +1,5 @@
 import { Conversation } from '../../../domain/models/Conversation.js';
+import { ConversationFilter } from '../../../domain/services/ConversationFilter.js';
 
 export function groupConversationsByProject(conversations: Conversation[]): Map<string, Conversation[]> {
     const grouped = new Map<string, Conversation[]>();
@@ -18,7 +19,6 @@ export function groupConversationsByProject(conversations: Conversation[]): Map<
 
 export function filterConversationsByCategory(conversations: Conversation[], category: string): Conversation[] {
     // Use ConversationFilter for categorization
-    const { ConversationFilter } = require('../../../domain/services/ConversationFilter');
     const filter = new ConversationFilter();
     return conversations.filter(c => filter.categorizeConversation(c) === category);
 }
@@ -97,7 +97,6 @@ export function getConversationStats(conversations: Conversation[]): {
         projectSet.add(conversation.getProjectContext().getOriginalPath());
         
         // Count categories using ConversationFilter
-        const { ConversationFilter } = require('../../../domain/services/ConversationFilter');
         const filter = new ConversationFilter();
         const category = filter.categorizeConversation(conversation);
         if (category in categories) {

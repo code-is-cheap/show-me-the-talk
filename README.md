@@ -2,6 +2,8 @@
 
 > **Code is cheap, show me the talk** - Export and share your Claude Code conversation experiences!
 
+https://github.com/user-attachments/assets/ca717e8e-acaa-45de-9f69-910930b3f1c7
+
 A TypeScript library and CLI tool for parsing, analyzing, and exporting Claude Code conversations. Built with Domain-Driven Design principles and SOLID architecture.
 
 ## 🚀 Features

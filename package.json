@@ -1,6 +1,6 @@
 {
   "name": "@code-is-cheap/show-me-the-talk",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Export and parse Claude Code conversations - code is cheap, show me the talk",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

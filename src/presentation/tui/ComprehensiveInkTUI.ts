@@ -757,10 +757,32 @@ export class ComprehensiveInkTUI {
         const content = currentMsg.getContent();
         const timestamp = currentMsg.timestamp.toLocaleTimeString();
 
+        // Calculate available height for content
+        const terminalHeight = process.stdout.rows || 24;
+        
+        // Use FIXED timeline height to prevent layout shifts
+        // Always reserve space for maximum possible timeline height (3 rows)
+        const FIXED_TIMELINE_HEIGHT = 3;
+        
+        // FIXED CONTENT HEIGHT: Use a reasonable fixed height for content area
+        // This prevents layout shifts when switching between messages
+        // For terminals >= 30 rows: use 15 lines (good reading experience)
+        // For smaller terminals: use proportional height but at least 8 lines
+        let FIXED_CONTENT_HEIGHT: number;
+        if (terminalHeight >= 30) {
+            FIXED_CONTENT_HEIGHT = 15;
+        } else if (terminalHeight >= 24) {
+            FIXED_CONTENT_HEIGHT = 10;
+        } else {
+            FIXED_CONTENT_HEIGHT = 8;
+        }
+        
+        const availableContentHeight = FIXED_CONTENT_HEIGHT;
+
         // Wrap content to fit terminal
         const terminalWidth = (process.stdout.columns || 80) - 4;
         const lines = this.wrapText(content, terminalWidth);
-        const visibleLines = lines.slice(state.scrollOffset, state.scrollOffset + 15);
+        const visibleLines = lines.slice(state.scrollOffset, state.scrollOffset + availableContentHeight);
         const contentElements = visibleLines.map((line: string, index: number) => 
             React.createElement(Text, { key: index }, `  ${line}`)
         );
@@ -776,8 +798,12 @@ export class ComprehensiveInkTUI {
             // Main timeline - Always visible with proper positioning
             this.renderMainTimeline(state, React, Box, Text),
             
-            // Message content view
-            React.createElement(Box, { key: 'message', flexDirection: 'column' }, [
+            // Message content view with fixed height box
+            React.createElement(Box, { 
+                key: 'message', 
+                flexDirection: 'column',
+                height: availableContentHeight + 2 // +2 for header and spacer
+            }, [
                 React.createElement(Text, {
                     key: 'header',
                     bold: true,
@@ -785,8 +811,16 @@ export class ComprehensiveInkTUI {
                 }, `${isUser ? '👤' : '🤖'} ${isUser ? 'User' : 'Assistant'} [${timestamp}]:`),
                 React.createElement(Box, { key: 'spacer' }),
                 ...contentElements,
-                lines.length > visibleLines.length + state.scrollOffset &&
-                    React.createElement(Text, { key: 'more', color: 'gray' }, '  [More content below - scroll down to see]')
+                // Fill empty lines to maintain consistent height
+                ...Array(Math.max(0, availableContentHeight - contentElements.length)).fill(null).map((_, i) => 
+                    React.createElement(Text, { key: `empty-${i}` }, '')
+                ),
+                // Scroll indicator
+                lines.length > availableContentHeight && React.createElement(Text, { 
+                    key: 'scroll-info', 
+                    color: 'gray',
+                    dimColor: true
+                }, `  [${state.scrollOffset + 1}-${Math.min(state.scrollOffset + availableContentHeight, lines.length)} of ${lines.length} lines]`)
             ]),
             React.createElement(Box, { key: 'spacer2' }),
             React.createElement(Box, { key: 'controls', borderStyle: 'single', borderColor: 'gray' }, 
@@ -802,7 +836,24 @@ export class ComprehensiveInkTUI {
         const messages = conversation.messages;
         const currentIndex = state.currentMessageIndex;
         const terminalWidth = Math.min(process.stdout.columns || 80, 120);
+        const terminalHeight = process.stdout.rows || 24;
         const timelineWidth = terminalWidth - 8;
+        
+        // Skip timeline in very small terminals to preserve content space
+        if (terminalHeight < 20) {
+            return React.createElement(Box, {
+                key: 'minimal-timeline',
+                flexDirection: 'column',
+                borderStyle: 'single',
+                borderColor: 'gray',
+                paddingLeft: 1,
+                paddingRight: 1
+            }, [
+                React.createElement(Text, { key: 'position', color: 'gray' }, 
+                    `Message ${currentIndex + 1}/${messages.length} | ${this.getMessageType(messages[currentIndex]) === 'user' ? '👤 User' : '🤖 AI'}`
+                ),
+            ]);
+        }
         // 🧠 PERFECT 2D BLOCKS: Focus on precision
         // Step 1: Ensure EVERY message gets at least 1 width
         const totalMessages = messages.length;
@@ -849,16 +900,12 @@ export class ComprehensiveInkTUI {
                 .replace(/\[Edited:.*?\]/g, '')
                 .trim();
             const contentLength = Math.max(cleanContent.length, 20);
-            // Better height calculation: 1-5 levels based on content
+            // Better height calculation: 1-3 levels based on content (reduced for more content space)
             let height = 1;
-            if (contentLength > 100)
-                height = 2;
             if (contentLength > 300)
+                height = 2;
+            if (contentLength > 1000)
                 height = 3;
-            if (contentLength > 800)
-                height = 4;
-            if (contentLength > 1500)
-                height = 5;
 
             return {
                 index: i,
@@ -868,7 +915,8 @@ export class ComprehensiveInkTUI {
                 isActive: i === currentIndex
             };
         });
-        const maxHeight = Math.max(...messageData.map((m: any) => m.height));
+        // FIXED: Always use maximum possible height to prevent layout shifts
+        const maxHeight = 3;
         
         // Step 3: Build perfect 2D grid
         const timelineRows = [];
@@ -1152,6 +1200,33 @@ export class ComprehensiveInkTUI {
             return title;
         }
         return title.substring(0, maxWidth - 3) + '...';
+    }
+
+    private calculateTimelineHeight(messages: any[]): number {
+        // Calculate the maximum height of the timeline based on message content
+        let maxHeight = 1;
+        
+        for (const msg of messages) {
+            const content = msg.getContent();
+            const cleanContent = content
+                .replace(/\[Tool:.*?\]/g, '')
+                .replace(/\[Viewed:.*?\]/g, '')
+                .replace(/\[Created:.*?\]/g, '')
+                .replace(/\[Edited:.*?\]/g, '')
+                .trim();
+            const contentLength = Math.max(cleanContent.length, 20);
+            
+            // Same height calculation as in renderMainTimeline
+            let height = 1;
+            if (contentLength > 300)
+                height = 2;
+            if (contentLength > 1000)
+                height = 3;
+                
+            maxHeight = Math.max(maxHeight, height);
+        }
+        
+        return maxHeight;
     }
 
     private mapToAppExportFormat(format: string): AppExportFormat {

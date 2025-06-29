@@ -12,6 +12,7 @@ dist-ssr/
 build/
 out/
 *.local
+!.claude/settings.local.json
 
 # Editor directories and files
 .vscode/*

@@ -1,12 +1,14 @@
 {
-  "name": "@code-is-cheap/show-me-the-talk",
+  "name": "ccshow",
   "version": "1.0.3",
   "description": "Export and parse Claude Code conversations - code is cheap, show me the talk",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
+    "ccshow": "dist/bin/show-me-the-talk.js",
     "show-me-the-talk": "dist/bin/show-me-the-talk.js",
-    "smtt": "dist/bin/show-me-the-talk.js"
+    "smtt": "dist/bin/show-me-the-talk.js",
+    "cctalk": "dist/bin/show-me-the-talk.js"
   },
   "scripts": {
     "build": "tsc",
@@ -40,7 +42,7 @@
     "typescript",
     "jsonl"
   ],
-  "author": "",
+  "author": "@code-is-cheap",
   "license": "MIT",
   "type": "module",
   "engines": {

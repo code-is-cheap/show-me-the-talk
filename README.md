@@ -1,5 +1,10 @@
 # Show Me The Talk
 
+[![npm version](https://img.shields.io/npm/v/ccshow.svg)](https://www.npmjs.com/package/ccshow)
+[![npm downloads](https://img.shields.io/npm/dm/ccshow.svg)](https://www.npmjs.com/package/ccshow)
+[![license](https://img.shields.io/npm/l/ccshow.svg)](https://github.com/code-is-cheap/show-me-the-talk/blob/main/LICENSE)
+[![Node.js Version](https://img.shields.io/node/v/ccshow.svg)](https://nodejs.org)
+
 > **Code is cheap, show me the talk** - Export and share your Claude Code conversation experiences!
 
 https://github.com/user-attachments/assets/ca717e8e-acaa-45de-9f69-910930b3f1c7
@@ -23,17 +28,22 @@ A TypeScript library and CLI tool for parsing, analyzing, and exporting Claude C
 
 ### Global Installation (Recommended for CLI usage)
 ```bash
+# Simple package name
+npm install -g ccshow
+
+# Or use the full name (preserves the "code is cheap, show me the talk" slogan)
 npm install -g @code-is-cheap/show-me-the-talk
 ```
 
 ### Local Installation
 ```bash
-npm install @code-is-cheap/show-me-the-talk
+npm install ccshow
+# or: npm install @code-is-cheap/show-me-the-talk
 ```
 
 ### One-time Usage with npx
 ```bash
-npx @code-is-cheap/show-me-the-talk --help
+npx ccshow --help
 ```
 
 ## 🎯 Quick Start
@@ -41,30 +51,29 @@ npx @code-is-cheap/show-me-the-talk --help
 ### Interactive Terminal UI (Default)
 
 ```bash
-# Launch interactive TUI (default behavior)
-show-me-the-talk
+# Launch interactive TUI - multiple command options available:
+ccshow                    # Shortest command
+show-me-the-talk         # Full command name
+smtt                     # Quick alias
+cctalk                   # Claude Code Talk
 
-# Short command alias
-smtt
-
-# Explicit TUI launch
-show-me-the-talk --tui
+# All commands are equivalent and launch the same TUI
 ```
 
 ### Command Line Export
 
 ```bash
-# Export all conversations as JSON
-show-me-the-talk -f json -o my-conversations.json
+# Export all conversations as JSON (use any command: ccshow, show-me-the-talk, smtt, or cctalk)
+ccshow -f json -o my-conversations.json
 
 # Export with metadata and analytics
-show-me-the-talk -f json -o detailed.json -m
+ccshow -f json -o detailed.json -m
 
 # Export specific project conversations
-show-me-the-talk -f markdown -o project.md -p "/path/to/project"
+ccshow -f markdown -o project.md -p "/path/to/project"
 
 # Export single conversation session
-show-me-the-talk -f html -o session.html -s "session-id-here"
+ccshow -f html -o session.html -s "session-id-here"
 ```
 
 ## 🛠️ Usage
@@ -72,7 +81,10 @@ show-me-the-talk -f html -o session.html -s "session-id-here"
 ### CLI Options
 
 ```bash
-Usage: show-me-the-talk [options]
+Usage: ccshow [options]
+   or: show-me-the-talk [options]
+   or: smtt [options]
+   or: cctalk [options]
 
 Options:
   -f, --format <format>     Export format: json, markdown, simple, html (default: interactive TUI)
@@ -90,22 +102,22 @@ Options:
 
 #### 1. **JSON** - Machine-readable structured data
 ```bash
-show-me-the-talk -f json -o data.json
+ccshow -f json -o data.json
 ```
 
 #### 2. **Markdown** - Human-readable documentation
 ```bash
-show-me-the-talk -f markdown -o conversations.md
+ccshow -f markdown -o conversations.md
 ```
 
 #### 3. **Simple** - Clean, minimal format
 ```bash
-show-me-the-talk -f simple -o clean.md
+ccshow -f simple -o clean.md
 ```
 
 #### 4. **HTML** - Enhanced web format with Time Machine
 ```bash
-show-me-the-talk -f html -o interactive.html
+ccshow -f html -o interactive.html
 ```
 
 ## 📚 Library Usage
@@ -113,7 +125,7 @@ show-me-the-talk -f html -o interactive.html
 ### Basic Usage
 
 ```typescript
-import { ShowMeTheTalk } from '@code-is-cheap/show-me-the-talk';
+import { ShowMeTheTalk } from 'ccshow';
 
 const tool = new ShowMeTheTalk('~/.claude');
 const conversations = await tool.getConversations();
@@ -128,11 +140,11 @@ await tool.export('json', 'output.json', {
 ### Advanced Usage
 
 ```typescript
-import { 
+import {
   ShowMeTheTalk,
   ExportConfiguration,
-  ConversationFilter 
-} from '@code-is-cheap/show-me-the-talk';
+  ConversationFilter
+} from 'ccshow';
 
 const tool = new ShowMeTheTalk('~/.claude');
 
@@ -228,4 +240,12 @@ See [CHANGELOG.md](CHANGELOG.md) for a list of changes and version history.
 
 ---
 
+<div align="center">
+
 **Show Me The Talk** - Making Claude Code conversations shareable and accessible! 🚀
+
+Made with ❤️ by [@code-is-cheap](https://github.com/code-is-cheap)
+
+[NPM Package](https://www.npmjs.com/package/ccshow) • [GitHub Repository](https://github.com/code-is-cheap/show-me-the-talk) • [Report Bug](https://github.com/code-is-cheap/show-me-the-talk/issues) • [Request Feature](https://github.com/code-is-cheap/show-me-the-talk/discussions)
+
+</div>

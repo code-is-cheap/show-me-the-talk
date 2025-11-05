@@ -69,6 +69,18 @@ export class AnalyticsDashboardTemplate {
     }
 
     /**
+     * Shared empty-state renderer
+     */
+    private renderEmptyState(icon: string, title: string, description: string, action?: string): string {
+        return `<div class="empty-state" role="status">
+        <div class="empty-icon" aria-hidden="true">${this.escapeHtml(icon)}</div>
+        <div class="empty-title">${this.escapeHtml(title)}</div>
+        <div class="empty-description">${this.escapeHtml(description)}</div>
+        ${action ? `<div class="empty-action">${this.escapeHtml(action)}</div>` : ''}
+    </div>`;
+    }
+
+    /**
      * Render complete dashboard HTML
      */
     render(report: AnalyticsReport): string {
@@ -516,6 +528,40 @@ export class AnalyticsDashboardTemplate {
         .hero-highlight-subtext {
             font-size: var(--text-xs);
             opacity: 0.75;
+        }
+
+        .empty-state {
+            border: 2px dashed var(--border);
+            border-radius: 16px;
+            padding: var(--space-8);
+            text-align: center;
+            background: var(--bg-elevated);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: var(--space-3);
+        }
+
+        .empty-icon {
+            font-size: 48px;
+        }
+
+        .empty-title {
+            font-size: var(--text-xl);
+            font-weight: 600;
+        }
+
+        .empty-description {
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
+            max-width: 420px;
+        }
+
+        .empty-action {
+            font-size: var(--text-xs);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-tertiary);
         }
 
         .hero-scroll-hint {
@@ -1645,8 +1691,26 @@ export class AnalyticsDashboardTemplate {
      * Generate word cloud section
      */
     private generateWordCloudSection(report: AnalyticsReport): string {
+        const words = report.wordCloud?.words ?? [];
+        const topWords = words.slice(0, 50);
+
+        if (topWords.length === 0) {
+            const emptyState = this.renderEmptyState(
+                '☁️',
+                'Word Cloud Not Ready Yet',
+                'We need at least one conversation to highlight your most used topics and technologies.',
+                'Add conversations and regenerate this dashboard to unlock the visualization.'
+            );
+            return `<section class="section word-cloud-section">
+        <div class="section-header">
+            <i class="fas fa-cloud"></i>
+            <h2>Word Cloud</h2>
+        </div>
+        ${emptyState}
+    </section>`;
+        }
+
         // Generate embedded word cloud HTML (simplified inline version)
-        const topWords = report.wordCloud.words.slice(0, 50);
         const wordsJson = JSON.stringify(topWords.map(w => ({
             text: w.text,
             size: Math.max(12, Math.min(60, w.weight * 1000)),
@@ -1836,67 +1900,66 @@ export class AnalyticsDashboardTemplate {
 
         const { cells, streak, stats } = report.heatmap;
 
-        // Group cells by week for rendering
-        const weeks = new Map<number, typeof cells>();
-        for (const cell of cells) {
-            if (!weeks.has(cell.weekNumber)) {
-                weeks.set(cell.weekNumber, []);
-            }
-            weeks.get(cell.weekNumber)!.push(cell);
-        }
-
-        const weeksArray = Array.from(weeks.values());
         const cellsJson = JSON.stringify(cells);
+        const hasActivity = cells.some(cell => cell.count > 0);
+        const summaryHtml = hasActivity
+            ? `<div class="heatmap-summary">
+                <div class="streak-card ${streak.isActiveStreak ? 'active' : ''}">
+                    <div class="streak-icon">🔥</div>
+                    <div class="streak-content">
+                        <div class="streak-value">${streak.currentStreak}</div>
+                        <div class="streak-label">Day${streak.currentStreak !== 1 ? 's' : ''} Streak</div>
+                        ${streak.isActiveStreak ? '<div class="streak-status">Active Today!</div>' : ''}
+                    </div>
+                </div>
+                <div class="heatmap-stat">
+                    <div class="stat-icon">📅</div>
+                    <div class="stat-content">
+                        <div class="stat-number">${stats.activeDays}</div>
+                        <div class="stat-text">Active Days</div>
+                    </div>
+                </div>
+                <div class="heatmap-stat">
+                    <div class="stat-icon">🏆</div>
+                    <div class="stat-content">
+                        <div class="stat-number">${streak.longestStreak}</div>
+                        <div class="stat-text">Longest Streak</div>
+                    </div>
+                </div>
+                <div class="heatmap-stat">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-content">
+                        <div class="stat-number">${stats.maxDayCount}</div>
+                        <div class="stat-text">Most in One Day</div>
+                    </div>
+                </div>
+            </div>
+            <div class="heatmap-container" id="heatmapContainer"></div>
+            <div class="heatmap-legend">
+                <span class="legend-label">Less</span>
+                <div class="legend-cell" data-level="0"></div>
+                <div class="legend-cell" data-level="1"></div>
+                <div class="legend-cell" data-level="2"></div>
+                <div class="legend-cell" data-level="3"></div>
+                <div class="legend-cell" data-level="4"></div>
+                <span class="legend-label">More</span>
+            </div>
+            <script>
+                window.heatmapData = ${cellsJson};
+            </script>`
+            : this.renderEmptyState(
+                '🌱',
+                'Heatmap Awaits Your First Conversation',
+                'Once you start chatting with Claude, your year-long contribution grid will light up with activity.',
+                'Regenerate this report after you have at least one conversation.'
+            );
 
         return `<section class="section heatmap-section">
         <div class="section-header">
             <i class="fas fa-fire"></i>
             <h2>Conversation Heatmap</h2>
         </div>
-        <div class="heatmap-summary">
-            <div class="streak-card ${streak.isActiveStreak ? 'active' : ''}">
-                <div class="streak-icon">🔥</div>
-                <div class="streak-content">
-                    <div class="streak-value">${streak.currentStreak}</div>
-                    <div class="streak-label">Day${streak.currentStreak !== 1 ? 's' : ''} Streak</div>
-                    ${streak.isActiveStreak ? '<div class="streak-status">Active Today!</div>' : ''}
-                </div>
-            </div>
-            <div class="heatmap-stat">
-                <div class="stat-icon">📅</div>
-                <div class="stat-content">
-                    <div class="stat-number">${stats.activeDays}</div>
-                    <div class="stat-text">Active Days</div>
-                </div>
-            </div>
-            <div class="heatmap-stat">
-                <div class="stat-icon">🏆</div>
-                <div class="stat-content">
-                    <div class="stat-number">${streak.longestStreak}</div>
-                    <div class="stat-text">Longest Streak</div>
-                </div>
-            </div>
-            <div class="heatmap-stat">
-                <div class="stat-icon">⚡</div>
-                <div class="stat-content">
-                    <div class="stat-number">${stats.maxDayCount}</div>
-                    <div class="stat-text">Most in One Day</div>
-                </div>
-            </div>
-        </div>
-        <div class="heatmap-container" id="heatmapContainer"></div>
-        <div class="heatmap-legend">
-            <span class="legend-label">Less</span>
-            <div class="legend-cell" data-level="0"></div>
-            <div class="legend-cell" data-level="1"></div>
-            <div class="legend-cell" data-level="2"></div>
-            <div class="legend-cell" data-level="3"></div>
-            <div class="legend-cell" data-level="4"></div>
-            <span class="legend-label">More</span>
-        </div>
-        <script>
-            window.heatmapData = ${cellsJson};
-        </script>
+        ${summaryHtml}
     </section>`;
     }
 

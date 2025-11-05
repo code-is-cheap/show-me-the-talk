@@ -1,6 +1,7 @@
 import { AnalyticsReport, AnalyticsInsight } from '../../../domain/models/analytics/AnalyticsReport.js';
 import { WordCloudHtmlRenderer, WordCloudRenderOptions } from './WordCloudHtmlRenderer.js';
 import { SemanticCluster } from '../../../domain/models/analytics/SemanticCluster.js';
+import { HeatmapData } from '../../../domain/services/analytics/ConversationHeatmapService.js';
 
 /**
  * Dashboard theme options
@@ -98,8 +99,8 @@ export class AnalyticsDashboardTemplate {
 
     <main class="dashboard-container">
         <!-- TIER 2: SOCIAL PROOF -->
-        ${report.achievements ? this.generateAchievementsSection(report) : ''}
-        ${report.heatmap ? this.generateHeatmapSection(report) : ''}
+        ${this.generateAchievementsSection(report)}
+        ${this.generateHeatmapSection(report)}
 
         <!-- TIER 3: IDENTITY -->
         ${this.options.includeTechStack ? this.generateTechStackSection(report) : ''}
@@ -142,6 +143,7 @@ export class AnalyticsDashboardTemplate {
     ${socialMeta}
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/cal-heatmap/dist/cal-heatmap.css">
     ${this.generateStyles()}`;
     }
 
@@ -1042,7 +1044,31 @@ export class AnalyticsDashboardTemplate {
             border: 1px solid var(--border);
             padding: var(--space-4);
             overflow-x: auto;
-            min-height: 150px;
+            min-height: 170px;
+            position: relative;
+        }
+
+        .heatmap-container.empty {
+            border-style: solid;
+            border-color: rgba(0, 112, 243, 0.25);
+            background: linear-gradient(135deg, rgba(0, 112, 243, 0.04), rgba(118, 75, 162, 0.04));
+        }
+
+        .heatmap-empty-label {
+            margin: var(--space-4) 0;
+            padding: var(--space-3) var(--space-4);
+            border-radius: 999px;
+            background: rgba(0, 112, 243, 0.09);
+            color: var(--color-primary);
+            font-size: var(--text-sm);
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-weight: 600;
+        }
+
+        .heatmap-empty-label i {
+            color: inherit;
         }
 
         .heatmap-grid {
@@ -1097,6 +1123,47 @@ export class AnalyticsDashboardTemplate {
         .legend-cell[data-level="2"] { background: #40c463; }
         .legend-cell[data-level="3"] { background: #30a14e; }
         .legend-cell[data-level="4"] { background: #216e39; }
+
+        .word-cloud-shell {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: var(--space-4);
+            min-height: 380px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .word-cloud-svg {
+            width: 100%;
+            height: 360px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .word-cloud-text {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-weight: 600;
+            fill: var(--text-primary);
+            cursor: default;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .word-cloud-text:hover {
+            opacity: 0.8;
+            transform: scale(1.05);
+        }
+
+        .word-cloud-text.placeholder {
+            opacity: 0.35;
+        }
+
+        .word-cloud-empty-hint {
+            text-align: center;
+            margin-top: var(--space-4);
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
+        }
 
         /* Achievements Styles */
         .achievements-summary {
@@ -1161,6 +1228,11 @@ export class AnalyticsDashboardTemplate {
             gap: var(--space-4);
         }
 
+        .achievements-grid.placeholder .achievement-card {
+            border-style: dashed;
+            opacity: 0.85;
+        }
+
         .achievement-card {
             display: flex;
             gap: var(--space-4);
@@ -1177,6 +1249,10 @@ export class AnalyticsDashboardTemplate {
 
         .achievement-card.locked {
             opacity: 0.6;
+        }
+
+        .achievement-card.placeholder .achievement-icon {
+            filter: grayscale(40%);
         }
 
         .achievement-icon {
@@ -1645,12 +1721,114 @@ export class AnalyticsDashboardTemplate {
         return highlights.slice(0, 4);
     }
 
+    private getHeatmapHighlightDates(report: AnalyticsReport): string[] {
+        if (!report.heatmap) return [];
+
+        const dates = new Set<string>();
+        const { streak, stats } = report.heatmap;
+
+        [
+            streak.currentStreakStart,
+            streak.currentStreakEnd,
+            streak.longestStreakStart,
+            streak.longestStreakEnd,
+            stats.maxDayDate
+        ].forEach(date => {
+            if (date) {
+                dates.add(date);
+            }
+        });
+
+        // Always highlight "today" to give users a point of reference
+        dates.add(new Date().toISOString().split('T')[0]);
+
+        return Array.from(dates);
+    }
+
+    private getHeatmapRangeMonths(heatmap?: AnalyticsReport['heatmap']): number {
+        if (!heatmap) return 12;
+
+        const start = new Date(heatmap.startDate);
+        const end = new Date(heatmap.endDate);
+
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            return 12;
+        }
+
+        const months = (end.getFullYear() - start.getFullYear()) * 12
+            + (end.getMonth() - start.getMonth())
+            + 1;
+        return Math.max(1, Math.min(months, 12));
+    }
+
+    private createPlaceholderHeatmapData(months: number = 12): HeatmapData {
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        const start = new Date(end);
+        start.setMonth(start.getMonth() - (months - 1));
+        start.setHours(0, 0, 0, 0);
+
+        const cells: HeatmapData['cells'] = [];
+        const cursor = new Date(start);
+        while (cursor <= end) {
+            cells.push({
+                date: cursor.toISOString().split('T')[0],
+                count: 0,
+                level: 0,
+                dayOfWeek: this.getISODayOfWeek(cursor),
+                weekNumber: this.getISOWeekNumber(cursor)
+            });
+            cursor.setDate(cursor.getDate() + 1);
+        }
+
+        const fallbackDate = cells[cells.length - 1]?.date ?? end.toISOString().split('T')[0];
+
+        return {
+            cells,
+            streak: {
+                currentStreak: 0,
+                longestStreak: 0,
+                isActiveStreak: false
+            },
+            stats: {
+                activeDays: 0,
+                maxDayCount: 0,
+                maxDayDate: fallbackDate,
+                avgPerActiveDay: 0,
+                mostProductiveDayOfWeek: 1,
+                totalConversations: 0
+            },
+            startDate: cells[0]?.date ?? fallbackDate,
+            endDate: fallbackDate
+        };
+    }
+
+    private getISODayOfWeek(date: Date): number {
+        const day = date.getDay();
+        return day === 0 ? 7 : day;
+    }
+
+    private getISOWeekNumber(date: Date): number {
+        const tempDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const dayNum = tempDate.getUTCDay() || 7;
+        tempDate.setUTCDate(tempDate.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(tempDate.getUTCFullYear(), 0, 1));
+        return Math.ceil((((tempDate.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    }
+
     /**
      * Generate overview statistics section
      */
     private generateOverviewSection(report: AnalyticsReport): string {
         const stats = report.statistics;
         const dateRange = `${stats.dateRange.start.toLocaleDateString()} - ${stats.dateRange.end.toLocaleDateString()}`;
+        const isEmpty = stats.totalConversations === 0;
+        const convoMeta = isEmpty ? 'Tap Claude to start your first streak.' : 'Keep going! 🚀';
+        const messagesMeta = isEmpty ? 'Conversations generate these counts.' : 'Every conversation counts';
+        const wordsMeta = isEmpty ? 'Words appear after your first session.' : "That's a lot of thinking!";
+        const avgMeta = isEmpty ? 'We calculate depth after your first convo.' : 'Deep conversations ✨';
+        const dateValue = isEmpty ? 'Awaiting first session' : this.escapeHtml(dateRange);
+        const dateMeta = isEmpty ? 'Your first conversation sets the range.' : 'Your journey so far';
 
         return `<section class="section overview-section">
         <div class="section-header">
@@ -1661,27 +1839,27 @@ export class AnalyticsDashboardTemplate {
             <div class="stat-card">
                 <div class="stat-label"><i class="fas fa-comments"></i> Conversations</div>
                 <div class="stat-value" data-countup="${stats.totalConversations}">0</div>
-                <div class="stat-meta">Keep going! 🚀</div>
+                <div class="stat-meta">${convoMeta}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-label"><i class="fas fa-message"></i> Messages</div>
                 <div class="stat-value" data-countup="${stats.totalMessages}">0</div>
-                <div class="stat-meta">Every conversation counts</div>
+                <div class="stat-meta">${messagesMeta}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-label"><i class="fas fa-font"></i> Total Words</div>
                 <div class="stat-value" data-countup="${stats.totalWords}">0</div>
-                <div class="stat-meta">That's a lot of thinking!</div>
+                <div class="stat-meta">${wordsMeta}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-label"><i class="fas fa-chart-line"></i> Avg Messages/Conv</div>
                 <div class="stat-value" data-countup="${stats.averageMessagesPerConversation}" data-decimals="1">0</div>
-                <div class="stat-meta">Deep conversations ✨</div>
+                <div class="stat-meta">${avgMeta}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-label"><i class="fas fa-calendar"></i> Date Range</div>
-                <div class="stat-value" style="font-size: 1.2rem;">${this.escapeHtml(dateRange)}</div>
-                <div class="stat-meta">Your journey so far</div>
+                <div class="stat-value" style="font-size: 1.2rem;">${dateValue}</div>
+                <div class="stat-meta">${dateMeta}</div>
             </div>
         </div>
     </section>`;
@@ -1691,31 +1869,15 @@ export class AnalyticsDashboardTemplate {
      * Generate word cloud section
      */
     private generateWordCloudSection(report: AnalyticsReport): string {
-        const words = report.wordCloud?.words ?? [];
-        const topWords = words.slice(0, 50);
-
-        if (topWords.length === 0) {
-            const emptyState = this.renderEmptyState(
-                '☁️',
-                'Word Cloud Not Ready Yet',
-                'We need at least one conversation to highlight your most used topics and technologies.',
-                'Add conversations and regenerate this dashboard to unlock the visualization.'
-            );
-            return `<section class="section word-cloud-section">
-        <div class="section-header">
-            <i class="fas fa-cloud"></i>
-            <h2>Word Cloud</h2>
-        </div>
-        ${emptyState}
-    </section>`;
-        }
-
-        // Generate embedded word cloud HTML (simplified inline version)
-        const wordsJson = JSON.stringify(topWords.map(w => ({
-            text: w.text,
-            size: Math.max(12, Math.min(60, w.weight * 1000)),
-            weight: w.weight
+        const { entries, isPlaceholder } = this.getWordCloudEntries(report);
+        const wordsJson = JSON.stringify(entries.map(entry => ({
+            text: entry.text,
+            weight: entry.weight,
+            placeholder: entry.placeholder ?? false
         })));
+        const placeholderHint = isPlaceholder
+            ? `<div class="word-cloud-empty-hint">Start your first Claude coding session to unlock a personalized word cloud.</div>`
+            : '';
 
         return `<section class="section word-cloud-section">
         <div class="section-header">
@@ -1733,9 +1895,10 @@ export class AnalyticsDashboardTemplate {
                 <i class="fas fa-adjust"></i> Monochrome
             </button>
         </div>
-        <div class="chart-container">
-            <canvas id="wordCloudCanvas" class="chart-canvas"></canvas>
+        <div class="word-cloud-shell">
+            <svg id="wordCloudSvg" class="word-cloud-svg" role="img" aria-label="Word cloud visualization"></svg>
         </div>
+        ${placeholderHint}
         <div class="export-controls">
             <button class="export-button" onclick="exportWordCloud()">
                 <i class="fas fa-download"></i> Export Word Cloud
@@ -1743,9 +1906,53 @@ export class AnalyticsDashboardTemplate {
         </div>
         <script>
             window.wordCloudData = ${wordsJson};
-            window.currentWordCloudTheme = 'tableau10';
+            window.currentWordCloudTheme = window.currentWordCloudTheme || 'tableau10';
         </script>
     </section>`;
+    }
+
+    private getWordCloudEntries(report: AnalyticsReport): { entries: Array<{ text: string; weight: number; placeholder?: boolean }>; isPlaceholder: boolean } {
+        const words = report.wordCloud?.words ?? [];
+        if (words.length > 0) {
+            return {
+                entries: words.slice(0, 80).map(word => ({
+                    text: word.text,
+                    weight: Math.max(0.01, word.weight)
+                })),
+                isPlaceholder: false
+            };
+        }
+
+        const placeholderTokens = this.getWordCloudPlaceholderTokens();
+        return {
+            entries: placeholderTokens.map((text, index) => ({
+                text,
+                weight: Math.max(0.05, 1 - index * 0.06),
+                placeholder: true
+            })),
+            isPlaceholder: true
+        };
+    }
+
+    private getWordCloudPlaceholderTokens(): string[] {
+        return [
+            'React',
+            'TypeScript',
+            'Docker',
+            'API Design',
+            'Testing',
+            'GraphQL',
+            'Next.js',
+            'Node.js',
+            'Vim',
+            'Kubernetes',
+            'CI/CD',
+            'Performance',
+            'Security',
+            'Refactor',
+            'Learning Path',
+            'Open Source'
+        ];
     }
 
     /**
@@ -1753,6 +1960,22 @@ export class AnalyticsDashboardTemplate {
      */
     private generateTechStackSection(report: AnalyticsReport): string {
         const topTech = report.getMostUsedTechnologies(10);
+        if (topTech.length === 0) {
+            const emptyState = this.renderEmptyState(
+                '🧩',
+                'No Tech Stack Yet',
+                'We will spotlight your most used technologies once you have conversations that mention tools, frameworks, or languages.',
+                'Share a conversation with Claude that includes code or stack details to unlock this section.'
+            );
+            return `<section class="section tech-stack-section">
+        <div class="section-header">
+            <i class="fas fa-code"></i>
+            <h2>Technology Stack</h2>
+        </div>
+        ${emptyState}
+    </section>`;
+        }
+
         const techData = JSON.stringify({
             labels: topTech.map(t => t.tech),
             data: topTech.map(t => t.count)
@@ -1777,6 +2000,22 @@ export class AnalyticsDashboardTemplate {
      */
     private generateTaskDistributionSection(report: AnalyticsReport): string {
         const taskDist = report.taskTypeClusters.getDistribution();
+        const totalTasks = Array.from(taskDist.values()).reduce((sum, value) => sum + value, 0);
+        if (totalTasks === 0) {
+            const emptyState = this.renderEmptyState(
+                '🧭',
+                'Task mix unlocks after your first Claude chat.',
+                'Once you discuss debugging, design, or learning topics, we animate this donut automatically.',
+                'Record a conversation to light it up.'
+            );
+            return `<section class="section task-distribution-section">
+        <div class="section-header">
+            <i class="fas fa-tasks"></i>
+            <h2>Task Distribution</h2>
+        </div>
+        ${emptyState}
+    </section>`;
+        }
         const taskData = JSON.stringify({
             labels: Array.from(taskDist.keys()),
             data: Array.from(taskDist.values())
@@ -1801,6 +2040,21 @@ export class AnalyticsDashboardTemplate {
      */
     private generateTopicClustersSection(report: AnalyticsReport): string {
         const topClusters = report.topicClusters.getLargestClusters(12);
+        if (topClusters.length === 0) {
+            const emptyState = this.renderEmptyState(
+                '🧠',
+                'Topic galaxy pending.',
+                'Share at least one conversation to let Claude map your knowledge clusters.',
+                'We highlight your top 12 themes automatically.'
+            );
+            return `<section class="section topic-clusters-section">
+        <div class="section-header">
+            <i class="fas fa-sitemap"></i>
+            <h2>Topic Clusters</h2>
+        </div>
+        ${emptyState}
+    </section>`;
+        }
         const clustersHtml = topClusters.map(cluster => {
             const keywords = cluster.getTopKeywords(8);
             return `<div class="cluster-card">
@@ -1833,6 +2087,22 @@ export class AnalyticsDashboardTemplate {
             messages: point.messageCount
         }));
 
+        if (timelineData.length === 0) {
+            const emptyState = this.renderEmptyState(
+                '📅',
+                'Timeline coming soon.',
+                'Your first week of Claude sessions paints a growth curve here.',
+                'Daily streaks feed this chart automatically.'
+            );
+            return `<section class="section timeline-section">
+        <div class="section-header">
+            <i class="fas fa-timeline"></i>
+            <h2>Activity Timeline</h2>
+        </div>
+        ${emptyState}
+    </section>`;
+        }
+
         const timelineJson = JSON.stringify({
             labels: timelineData.map(t => t.date),
             conversations: timelineData.map(t => t.conversations),
@@ -1858,6 +2128,21 @@ export class AnalyticsDashboardTemplate {
      */
     private generateInsightsSection(report: AnalyticsReport): string {
         const insights = report.insights;
+        if (insights.length === 0) {
+            const emptyState = this.renderEmptyState(
+                '💡',
+                'Claude will surface insights once data arrives.',
+                'Complete a conversation, and we will highlight your breakthroughs here.',
+                'Think Spotify Wrapped, but for your coding wins.'
+            );
+            return `<section class="section insights-section">
+        <div class="section-header">
+            <i class="fas fa-lightbulb"></i>
+            <h2>Key Insights</h2>
+        </div>
+        ${emptyState}
+    </section>`;
+        }
         const insightsHtml = insights.map(insight => {
             const evidenceHtml = insight.evidence.length > 0
                 ? `<div class="insight-evidence">
@@ -1896,14 +2181,14 @@ export class AnalyticsDashboardTemplate {
      * Generate conversation heatmap section (GitHub-style)
      */
     private generateHeatmapSection(report: AnalyticsReport): string {
-        if (!report.heatmap) return '';
+        const heatmapData = report.heatmap ?? this.createPlaceholderHeatmapData();
+        const { cells, streak, stats } = heatmapData;
 
-        const { cells, streak, stats } = report.heatmap;
-
-        const cellsJson = JSON.stringify(cells);
-        const hasActivity = cells.some(cell => cell.count > 0);
-        const summaryHtml = hasActivity
-            ? `<div class="heatmap-summary">
+        const hasActivity = !!report.heatmap && cells.some(cell => cell.count > 0);
+        const heatmapSeries = cells.map(cell => ({ date: cell.date, value: cell.count }));
+        const heatmapRange = this.getHeatmapRangeMonths(report.heatmap ?? heatmapData);
+        const highlightDates = this.getHeatmapHighlightDates(report);
+        const summaryHtml = `<div class="heatmap-summary">
                 <div class="streak-card ${streak.isActiveStreak ? 'active' : ''}">
                     <div class="streak-icon">🔥</div>
                     <div class="streak-content">
@@ -1933,26 +2218,12 @@ export class AnalyticsDashboardTemplate {
                         <div class="stat-text">Most in One Day</div>
                     </div>
                 </div>
-            </div>
-            <div class="heatmap-container" id="heatmapContainer"></div>
-            <div class="heatmap-legend">
-                <span class="legend-label">Less</span>
-                <div class="legend-cell" data-level="0"></div>
-                <div class="legend-cell" data-level="1"></div>
-                <div class="legend-cell" data-level="2"></div>
-                <div class="legend-cell" data-level="3"></div>
-                <div class="legend-cell" data-level="4"></div>
-                <span class="legend-label">More</span>
-            </div>
-            <script>
-                window.heatmapData = ${cellsJson};
-            </script>`
-            : this.renderEmptyState(
-                '🌱',
-                'Heatmap Awaits Your First Conversation',
-                'Once you start chatting with Claude, your year-long contribution grid will light up with activity.',
-                'Regenerate this report after you have at least one conversation.'
-            );
+            </div>`;
+
+        const emptyLabel = hasActivity
+            ? ''
+            : `<div class="heatmap-empty-label"><i class="fas fa-seedling"></i> Start a conversation to light up each day.</div>`;
+        const containerClass = hasActivity ? 'heatmap-container' : 'heatmap-container empty';
 
         return `<section class="section heatmap-section">
         <div class="section-header">
@@ -1960,6 +2231,26 @@ export class AnalyticsDashboardTemplate {
             <h2>Conversation Heatmap</h2>
         </div>
         ${summaryHtml}
+        ${emptyLabel}
+        <div class="${containerClass}" id="heatmapContainer"></div>
+        <div class="heatmap-legend">
+            <span class="legend-label">Less</span>
+            <div class="legend-cell" data-level="0"></div>
+            <div class="legend-cell" data-level="1"></div>
+            <div class="legend-cell" data-level="2"></div>
+            <div class="legend-cell" data-level="3"></div>
+            <div class="legend-cell" data-level="4"></div>
+            <span class="legend-label">More</span>
+        </div>
+        <script>
+            window.heatmapSeries = ${JSON.stringify(heatmapSeries)};
+            window.heatmapConfig = ${JSON.stringify({
+                startDate: heatmapData.startDate,
+                endDate: heatmapData.endDate,
+                range: heatmapRange,
+                highlightDates
+            })};
+        </script>
     </section>`;
     }
 
@@ -1967,7 +2258,9 @@ export class AnalyticsDashboardTemplate {
      * Generate achievements section
      */
     private generateAchievementsSection(report: AnalyticsReport): string {
-        if (!report.achievements) return '';
+        if (!report.achievements || report.achievements.achievements.length === 0) {
+            return this.renderAchievementsPlaceholder();
+        }
 
         const { achievements, totalUnlocked, completionPercentage } = report.achievements;
 
@@ -2031,6 +2324,46 @@ export class AnalyticsDashboardTemplate {
         </div>
         <div class="achievements-grid">
             ${achievementsHtml}
+        </div>
+    </section>`;
+    }
+
+    private renderAchievementsPlaceholder(): string {
+        const placeholderBadges = [
+            { icon: '🏆', name: 'Century Club', rarity: 'legendary', description: '100+ conversations' },
+            { icon: '🔥', name: 'Streak Master', rarity: 'epic', description: '7-day streak' },
+            { icon: '🌍', name: 'Full-Stack Explorer', rarity: 'rare', description: 'Discuss 5+ tech domains' }
+        ];
+
+        const cardsHtml = placeholderBadges.map(badge => `
+            <div class="achievement-card placeholder" data-rarity="${badge.rarity}">
+                <div class="achievement-icon">${badge.icon}</div>
+                <div class="achievement-content">
+                    <div class="achievement-header">
+                        <h3 class="achievement-name">${this.escapeHtml(badge.name)}</h3>
+                        <span class="achievement-rarity">${badge.rarity}</span>
+                    </div>
+                    <p class="achievement-description">${this.escapeHtml(badge.description)}</p>
+                    <div class="achievement-progress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 0%; background: var(--border);"></div>
+                        </div>
+                        <p class="progress-text">Unlock this badge by completing your first Claude session.</p>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        return `<section class="section achievements-section">
+        <div class="section-header">
+            <i class="fas fa-award"></i>
+            <h2>Achievement Badges</h2>
+        </div>
+        <div class="achievements-summary">
+            ${this.renderEmptyState('🚀', 'Badges unlock after your first Claude conversation.', 'Record your first coding chat to start collecting legendary trophies.', 'Screenshot-ready as soon as you interact with Claude.')}
+        </div>
+        <div class="achievements-grid placeholder">
+            ${cardsHtml}
         </div>
     </section>`;
     }
@@ -2242,9 +2575,14 @@ export class AnalyticsDashboardTemplate {
         return `<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3-cloud@1.2.7/build/d3.layout.cloud.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
+    <script src="https://unpkg.com/cal-heatmap/dist/cal-heatmap.min.js"></script>
+    <script src="https://unpkg.com/cal-heatmap/dist/plugins/Tooltip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/countup.js@2.8.0/dist/countUp.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
     <script>
+        let calHeatmapInstance;
+
         // Theme management
         function toggleTheme() {
             const html = document.documentElement;
@@ -2260,6 +2598,8 @@ export class AnalyticsDashboardTemplate {
                 icon.className = 'fas fa-moon';
                 localStorage.setItem('theme', 'light');
             }
+
+            setTimeout(initHeatmap, 0);
         }
 
         // Initialize theme
@@ -2587,49 +2927,69 @@ export class AnalyticsDashboardTemplate {
             }
         }
 
+        function normalizeWordWeight(weight, minWeight, maxWeight) {
+            if (maxWeight === minWeight) {
+                return 1;
+            }
+            return (weight - minWeight) / (maxWeight - minWeight);
+        }
+
         // Initialize Word Cloud
         function initWordCloud() {
-            if (!window.wordCloudData) return;
+            if (!window.wordCloudData || window.wordCloudData.length === 0) return;
+            if (typeof d3 === 'undefined' || !d3.layout || typeof d3.layout.cloud !== 'function') {
+                console.warn('d3-cloud library not available');
+                return;
+            }
 
-            const canvas = document.getElementById('wordCloudCanvas');
-            if (!canvas) return;
+            const svgElement = document.getElementById('wordCloudSvg');
+            if (!svgElement) return;
 
-            const ctx = canvas.getContext('2d');
-            const width = canvas.offsetWidth;
-            const height = 400;
-            canvas.width = width;
-            canvas.height = height;
+            const width = svgElement.clientWidth || svgElement.parentElement?.offsetWidth || 960;
+            const height = 360;
 
-            // Simple word cloud rendering on canvas
-            ctx.clearRect(0, 0, width, height);
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
+            const svg = d3.select(svgElement);
+            svg.selectAll('*').remove();
+            svg.attr('width', width).attr('height', height);
 
-            const words = window.wordCloudData.slice(0, 30);
+            const theme = window.currentWordCloudTheme || 'tableau10';
+            const entries = window.wordCloudData.slice(0, 80).map(word => ({
+                text: word.text,
+                weight: word.weight,
+                size: Math.max(16, Math.min(72, Math.round(word.size || word.weight * 160)))
+            }));
 
-            // Calculate weight range for color mapping
-            const weights = words.map(w => w.weight);
+            const weights = entries.map(entry => entry.weight);
             const minWeight = Math.min(...weights);
             const maxWeight = Math.max(...weights);
 
-            const centerX = width / 2;
-            const centerY = height / 2;
+            d3.layout.cloud()
+                .size([width, height])
+                .words(entries)
+                .padding(4)
+                .rotate(() => (Math.random() > 0.85 ? 90 : 0))
+                .font("'Inter', 'Segoe UI', sans-serif")
+                .fontSize(d => d.size)
+                .on('end', words => {
+                    const group = svg.append('g')
+                        .attr('transform', \`translate(\${width / 2}, \${height / 2})\`);
 
-            const theme = window.currentWordCloudTheme || 'tableau10';
+                    group.selectAll('text')
+                        .data(words)
+                        .enter()
+                        .append('text')
+                        .attr('class', d => 'word-cloud-text' + (d.placeholder ? ' placeholder' : ''))
+                        .style('font-size', d => \`\${d.size}px\`)
+                        .style('fill', (d, i) => {
+                            const normalized = normalizeWordWeight(d.weight, minWeight, maxWeight);
+                            return getWordCloudColor(i, normalized, theme);
+                        })
+                        .attr('text-anchor', 'middle')
+                        .attr('transform', d => \`translate(\${d.x}, \${d.y}) rotate(\${d.rotate})\`)
+                        .text(d => d.text);
+                })
+                .start();
 
-            words.forEach((word, i) => {
-                const angle = (Math.PI * 2 * i) / words.length;
-                const radius = 80 + Math.random() * 100;
-                const x = centerX + Math.cos(angle) * radius;
-                const y = centerY + Math.sin(angle) * radius;
-
-                // Normalize weight for color calculation
-                const normalized = (word.weight - minWeight) / (maxWeight - minWeight || 1);
-
-                ctx.font = \`\${word.size}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif\`;
-                ctx.fillStyle = getWordCloudColor(i, normalized, theme);
-                ctx.fillText(word.text, x, y);
-            });
         }
 
         // Change word cloud theme
@@ -2655,13 +3015,26 @@ export class AnalyticsDashboardTemplate {
 
         // Export functions
         function exportWordCloud() {
-            const canvas = document.getElementById('wordCloudCanvas');
-            if (!canvas) return;
+            const svg = document.getElementById('wordCloudSvg');
+            if (!svg) return;
 
+            const serializer = new XMLSerializer();
+            let source = serializer.serializeToString(svg);
+            const svgNamespaceAttr = 'xmlns="http://www.w3.org/2000/svg"';
+            if (!source.includes(svgNamespaceAttr)) {
+                source = source.replace('<svg', '<svg ' + svgNamespaceAttr);
+            }
+            if (!source.startsWith('<?xml')) {
+                source = '<?xml version="1.0" encoding="UTF-8"?>' + source;
+            }
+
+            const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
-            link.download = 'word-cloud.png';
-            link.href = canvas.toDataURL();
+            link.download = 'word-cloud.svg';
+            link.href = url;
             link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1500);
         }
 
         function exportDashboard() {
@@ -2675,7 +3048,7 @@ export class AnalyticsDashboardTemplate {
                 const decimals = parseInt(el.getAttribute('data-decimals') || '0');
 
                 if (!isNaN(value)) {
-                    const countUp = new countUp.CountUp(el, value, {
+                    const counter = new countUp.CountUp(el, value, {
                         duration: 2,
                         separator: ',',
                         decimal: '.',
@@ -2683,69 +3056,105 @@ export class AnalyticsDashboardTemplate {
                         useEasing: true,
                         useGrouping: true
                     });
-                    countUp.start();
+                    counter.start();
                 }
             });
         }
 
         // Initialize Heatmap
         function initHeatmap() {
-            if (!window.heatmapData) return;
+            if (!window.heatmapSeries) return;
 
             const container = document.getElementById('heatmapContainer');
             if (!container) return;
 
-            // Create grid
-            const grid = document.createElement('div');
-            grid.className = 'heatmap-grid';
-
-            // Group cells by week for column layout
-            const weeks = new Map();
-            for (const cell of window.heatmapData) {
-                if (!weeks.has(cell.weekNumber)) {
-                    weeks.set(cell.weekNumber, []);
+            try {
+                if (calHeatmapInstance && typeof calHeatmapInstance.destroy === 'function') {
+                    calHeatmapInstance.destroy();
                 }
-                weeks.get(cell.weekNumber).push(cell);
+
+                if (typeof CalHeatmap === 'undefined') {
+                    console.warn('Cal-Heatmap not loaded');
+                    return;
+                }
+
+                const config = window.heatmapConfig || {};
+                const startDate = config.startDate ? new Date(config.startDate) : undefined;
+                const highlightDates = Array.isArray(config.highlightDates)
+                    ? config.highlightDates.map(date => new Date(date))
+                    : [];
+                const range = config.range || 12;
+
+                calHeatmapInstance = new CalHeatmap();
+
+                const plugins = [];
+                if (typeof Tooltip !== 'undefined') {
+                    plugins.push([Tooltip, {
+                        text: function(timestamp, value) {
+                            const parsedValue = value || 0;
+                            const date = new Date(timestamp);
+                            const formatted = Number.isNaN(date.getTime())
+                                ? ''
+                                : date.toLocaleDateString();
+                            let result = parsedValue + ' conversation' + (parsedValue === 1 ? '' : 's');
+                            if (formatted) {
+                                result += ' • ' + formatted;
+                            }
+                            return result;
+                        }
+                    }]);
+                }
+
+                calHeatmapInstance.paint({
+                    itemSelector: '#heatmapContainer',
+                    date: {
+                        start: startDate,
+                        highlight: highlightDates
+                    },
+                    range: range,
+                    domain: {
+                        type: 'month',
+                        gutter: 6,
+                        label: {
+                            text: function(date) {
+                                const parsedDate = date instanceof Date ? date : new Date(date);
+                                if (Number.isNaN(parsedDate.getTime())) {
+                                    return '';
+                                }
+                                return parsedDate.toLocaleString(undefined, { month: 'short' });
+                            }
+                        }
+                    },
+                    subDomain: {
+                        type: 'ghDay',
+                        width: 12,
+                        height: 12,
+                        gutter: 3,
+                        radius: 2
+                    },
+                    data: {
+                        source: window.heatmapSeries,
+                        x: function(entry) {
+                            return new Date(entry.date);
+                        },
+                        y: function(entry) {
+                            return entry.value;
+                        },
+                        defaultValue: 0
+                    },
+                    scale: {
+                        color: {
+                            type: 'threshold',
+                            domain: [1, 2, 3, 4],
+                            range: ['#d4dbe2', '#9be9a8', '#40c463', '#30a14e', '#216e39']
+                        }
+                    },
+                    theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
+                }, plugins);
+
+            } catch (error) {
+                console.error('[Heatmap] Rendering failed', error);
             }
-
-            // Render cells (7 rows × N weeks columns)
-            const sortedWeeks = Array.from(weeks.values()).sort((a, b) => {
-                const dateA = new Date(a[0].date);
-                const dateB = new Date(b[0].date);
-                return dateA - dateB;
-            });
-
-            for (const week of sortedWeeks) {
-                // Sort days in week by dayOfWeek
-                week.sort((a, b) => a.dayOfWeek - b.dayOfWeek);
-
-                // Fill missing days with empty cells
-                const filledWeek = [];
-                for (let dow = 1; dow <= 7; dow++) {
-                    const cell = week.find(c => c.dayOfWeek === dow);
-                    if (cell) {
-                        filledWeek.push(cell);
-                    } else {
-                        filledWeek.push({ date: '', count: 0, level: 0, dayOfWeek: dow });
-                    }
-                }
-
-                for (const cell of filledWeek) {
-                    const cellEl = document.createElement('div');
-                    cellEl.className = 'heatmap-cell';
-                    cellEl.setAttribute('data-level', cell.level);
-                    cellEl.setAttribute('data-date', cell.date);
-                    cellEl.setAttribute('data-count', cell.count);
-
-                    if (cell.count > 0) {
-                        cellEl.title = \`\${cell.date}: \${cell.count} conversation\${cell.count > 1 ? 's' : ''}\`;
-                    }
-
-                    grid.appendChild(cellEl);
-                }
-            }
-
-            container.appendChild(grid);
         }
 
         // Wrapped Story Functions

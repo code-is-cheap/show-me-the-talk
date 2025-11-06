@@ -14,11 +14,14 @@ A TypeScript library and CLI tool for parsing, analyzing, and exporting Claude C
 ## 🚀 Features
 
 - **🖥️ Interactive Terminal UI**: Modern terminal interface with Ink + React
-- **📊 Real-time Filtering**: Live search and filter conversations by project, keywords, date
+- **📊 Growth-Hacking Analytics Dashboard**: Spotify Wrapped-style reports with developer personas, achievements, and MBTI typing
+- **🎯 Developer Persona Classification**: Discover if you're a Night Owl Full-Stack, Tech Explorer, or one of 8 other types
+- **🏆 Gamified Achievement System**: Unlock 10 badges from Common to Legendary across 4 categories
+- **📅 365-Day Contribution Heatmap**: GitHub-style activity grid with streak tracking and FOMO mechanisms
+- **🎬 Wrapped Story Mode**: 8 swipeable full-screen cards optimized for Instagram Stories sharing
 - **⚡ Multiple Export Formats**: JSON, Markdown, Simple, and Enhanced HTML with Time Machine
 - **🤖 Smart Conversation Analysis**: Auto-categorize by debugging, architecture, learning, etc.
 - **📁 Project-based Organization**: Group and navigate conversations by project context
-- **📈 Rich Metrics & Analytics**: Comprehensive conversation statistics and insights
 - **⌨️ Keyboard Navigation**: Professional terminal experience optimized for developers
 - **🎨 Enhanced HTML Export**: Interactive conversations with syntax highlighting and timeline
 - **🔍 Advanced Parsing**: Extract meaningful dialogues from Claude Code JSONL files
@@ -164,6 +167,134 @@ const filter = new ConversationFilter()
 const conversations = await tool.getConversations(filter);
 await tool.exportWithConfig(conversations, 'output.html', config);
 ```
+
+## 📊 Analytics Dashboard
+
+Show Me The Talk includes a **growth-hacking analytics dashboard** that transforms your conversation data into shareable, viral-ready insights inspired by Spotify Wrapped, GitHub Year in Review, and Duolingo streaks.
+
+### ✨ Key Features
+
+- **🎯 Developer Persona Classification** - Discover your coding personality type (8 types with MBTI mapping)
+- **🏆 Achievement System** - Unlock 10 badges across 4 categories (Activity, Consistency, Exploration, Mastery)
+- **📅 Contribution Heatmap** - GitHub-style 365-day activity grid with streak tracking
+- **🎬 Wrapped Story** - 8 swipeable full-screen cards optimized for Instagram Stories
+- **📈 Hero-First Design** - 100vh gradient hero section with persona + MBTI reveal
+- **💬 MBTI Typing** - Each persona mapped to Myers-Briggs type (ENTP, INTJ, ENFP, etc.)
+
+### 🚀 Generate Your Analytics
+
+```bash
+# Build and generate analytics report
+npm run build
+npx tsx scripts/test-analytics.ts
+
+# Open the generated HTML
+open test-analytics-report.html
+```
+
+> 💡 **Optional LLM sentence insights** – to let the dashboard summarize full sentences (not just words), set the following before running the script:
+> ```bash
+> export ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic/v1/messages
+> export ANTHROPIC_AUTH_TOKEN=YOUR_GLM_KEY            # e.g. 4ea0...DI
+> export ANALYTICS_LLM_MODEL=GLM-4.6                  # optional override
+> export ANALYTICS_LLM_MAX_TOKENS=2048                # optional override
+> export ANALYTICS_LLM_MODE=mock|auto|live            # default auto
+> ```
+> `mock` mode replays `tests/fixtures/llm/sentence-insights.mock.json` so CI stays deterministic; set `live` only when you want to hit GLM for real.  You can also persist live responses via `ANALYTICS_LLM_CACHE_PATH=/tmp/sentence-insights.json`.
+> Without these variables the report falls back to the built-in heuristic analysis.
+
+### 📱 What's in the Dashboard?
+
+**Tier 1: Hero (Above Fold)**
+- Your coding year overview (2025)
+- Developer persona reveal (e.g., "Tech Explorer 🧭")
+- MBTI typing (e.g., "ENTP - The Visionary")
+- Total conversations (giant 128px number)
+- Massive CTA: "View Your Wrapped Story"
+
+**Tier 2: Social Proof**
+- Achievement badges with rarity tiers (Common → Legendary)
+- 365-day contribution heatmap with current/longest streaks
+- Activity statistics (active days, most productive hour)
+
+**Tier 3: Identity**
+- Top 5 technologies with medal icons (🥇🥈🥉)
+- Word cloud with TF-IDF weighting
+- Multi-theme switcher (Vibrant/Gradient/Monochrome)
+
+**Tier 4: Details (Collapsible)**
+- Conversation statistics
+- Task distribution charts
+- Topic clusters
+- Timeline evolution
+- AI-generated insights
+
+### 🎯 8-Card Wrapped Story
+
+1. **Welcome** - "Your 2025 Coding Year"
+2. **Big Number** - Total conversations with motivational context
+3. **Word Cloud** - Top 20 words visualized
+4. **Heatmap** - Streak display (🔥 Fire emoji for active streaks)
+5. **Tech Stack** - Top 5 technologies ranked
+6. **Achievements** - Unlocked badges (top 3 by rarity)
+7. **Persona** - Your developer type with MBTI badge
+8. **Share** - Social sharing buttons (Twitter, LinkedIn, Download)
+
+### 📖 Documentation
+
+- **[Complete Handover](docs/ANALYTICS_HANDOVER.md)** - 50+ page technical documentation
+- **[Quick Start Guide](docs/QUICK_START.md)** - 5-minute setup and common tasks
+- **[Test Script](scripts/test-analytics.ts)** - Example analytics generation
+
+### 🎨 Developer Personas
+
+| Persona | MBTI | Description |
+|---------|------|-------------|
+| 🦉 Night Owl Full-Stack | ENTP | Code when the world sleeps, exploring everything |
+| 🌅 Early Bird Architect | INTJ | Start early, plan carefully, build with intention |
+| ⚔️ Weekend Warrior | ENFP | Save coding adventures for weekends |
+| 📚 Consistent Learner | ISFJ | Every day is a learning day |
+| 🧭 Tech Explorer | ENTP | Love discovering new technologies |
+| 🎯 Deep Specialist | ISTJ | Dive deep, master thoroughly |
+| ⚡ Sprint Coder | ESTP | Work in intense bursts |
+| 🏗️ Steady Builder | ISFJ | Build consistently, steady progress |
+
+### 🏆 Achievement Badges
+
+**Legendary** 💎
+- Century Club (100+ conversations)
+- Marathon Runner (14-day streak)
+
+**Epic** 🔮
+- Week Warrior (7-day streak)
+
+**Rare** 💎
+- Full-Stack Explorer (10+ technologies)
+- Knowledge Seeker (50+ conversations)
+- Deep Diver (50+ messages in one conversation)
+- Consistent Learner (30+ active days)
+
+**Common** ⭐
+- First Steps (first conversation)
+- Tech Enthusiast (5+ technologies)
+- Productive Day (5+ conversations in one day)
+
+### 📊 Sample Output
+
+The dashboard generates a **self-contained 117 KB HTML file** with:
+- ✅ Zero external dependencies at runtime
+- ✅ Embedded CSS/JS for offline use
+- ✅ CDN-loaded libraries (Chart.js, D3, Swiper.js)
+- ✅ Responsive design (desktop + mobile)
+- ✅ Dark mode support
+- ✅ Print-friendly styles
+
+**Perfect for:**
+- Social media screenshots 📸
+- Portfolio showcases 💼
+- Year-end reviews 🎉
+- Team presentations 👥
+- Personal bragging rights 🏆
 
 ## 🏗️ Architecture
 

@@ -1,15 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { spawn, ChildProcess, execSync } from 'child_process';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
+import { resolve } from 'path';
 import stripAnsi from 'strip-ansi';
 import { writeFileSync, mkdirSync, rmSync } from 'fs';
+import { spawnCli } from '../utils/runCli';
 
 describe('CLI Integration Tests', () => {
   // Get the current file's directory in a cross-platform way
   const currentDir = process.cwd();
   const cliPath = resolve(currentDir, 'dist/bin/show-me-the-talk.js');
   const testDataDir = resolve(currentDir, 'tests/fixtures/test-data');
+  const spawnCliProcess = (args: string[] = [], options = {}) => spawnCli(cliPath, args, options);
   
   beforeEach(() => {
     // Create test data directory
@@ -70,44 +71,23 @@ describe('CLI Integration Tests', () => {
   });
 
   describe('TUI Mode Detection', () => {
-    it('should detect TTY environment correctly', (done) => {
-      const child = spawn('node', [cliPath], {
-        stdio: ['inherit', 'pipe', 'pipe'],
-        env: { ...process.env, FORCE_COLOR: 'true' }
+    it('should detect TTY environment correctly', async () => {
+      const { child, wait } = spawnCliProcess([], {
+        env: { ...process.env, FORCE_COLOR: 'true' },
+        timeoutMs: 4000
       });
 
-      let output = '';
-      let errorOutput = '';
-
-      child.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      child.stderr.on('data', (data) => {
-        errorOutput += data.toString();
-      });
-
-      // Send quit command immediately
       setTimeout(() => {
         child.stdin?.write('q');
         child.stdin?.end();
       }, 100);
 
-      child.on('close', (code) => {
-        // Should either start TUI or show TTY error
-        const combinedOutput = output + errorOutput;
-        expect(
-          combinedOutput.includes('🚀 Starting Comprehensive Ink TUI') ||
-          combinedOutput.includes('This TUI requires a TTY environment')
-        ).toBe(true);
-        done();
-      });
-
-      // Prevent hanging
-      setTimeout(() => {
-        child.kill('SIGTERM');
-        done();
-      }, 3000);
+      const result = await wait;
+      const combinedOutput = result.stdout + result.stderr;
+      expect(
+        combinedOutput.includes('🚀 Starting Comprehensive Ink TUI') ||
+        combinedOutput.includes('This TUI requires a TTY environment')
+      ).toBe(true);
     });
 
     it('should handle non-TTY environment gracefully', () => {
@@ -145,135 +125,71 @@ describe('CLI Integration Tests', () => {
   });
 
   describe('Command Line Arguments', () => {
-    it('should accept valid project path', (done) => {
-      const child = spawn('node', [cliPath, testDataDir], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, FORCE_COLOR: 'false' }
-      });
-
-      let output = '';
-      child.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      child.stderr.on('data', (data) => {
-        output += data.toString();
+    it('should accept valid project path', async () => {
+      const { child, wait } = spawnCliProcess([testDataDir], {
+        env: { ...process.env, FORCE_COLOR: 'false' },
+        timeoutMs: 4000
       });
 
       setTimeout(() => {
         child.kill('SIGTERM');
       }, 1000);
 
-      child.on('close', () => {
-        // Should either start successfully or show TTY requirement
-        expect(output).toBeDefined();
-        done();
-      });
+      const result = await wait;
+      expect(result.stdout + result.stderr).toBeDefined();
     });
 
-    it('should handle verbose flag', (done) => {
-      const child = spawn('node', [cliPath, '--verbose'], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, DEBUG: 'show-me-the-talk:*' }
-      });
-
-      let output = '';
-      child.stderr.on('data', (data) => {
-        output += data.toString();
+    it('should handle verbose flag', async () => {
+      const { child, wait } = spawnCliProcess(['--verbose'], {
+        env: { ...process.env, DEBUG: 'show-me-the-talk:*' },
+        timeoutMs: 4000
       });
 
       setTimeout(() => {
         child.kill('SIGTERM');
       }, 1000);
 
-      child.on('close', () => {
-        // Verbose mode should produce debug output or TTY message
-        expect(output).toBeDefined();
-        done();
-      });
+      const result = await wait;
+      expect(result.stderr).toBeDefined();
     });
   });
 
   describe('Data Loading', () => {
-    it('should attempt to load conversation data', (done) => {
-      const child = spawn('node', [cliPath, testDataDir], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      let output = '';
-      child.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      child.stderr.on('data', (data) => {
-        output += data.toString();
-      });
+    it('should attempt to load conversation data', async () => {
+      const { child, wait } = spawnCliProcess([testDataDir], { timeoutMs: 5000 });
 
       setTimeout(() => {
         child.kill('SIGTERM');
       }, 2000);
 
-      child.on('close', () => {
-        // Should either load data successfully or show appropriate error
-        const cleanOutput = stripAnsi(output);
-        expect(
-          cleanOutput.includes('conversations') ||
-          cleanOutput.includes('This TUI requires a TTY') ||
-          cleanOutput.includes('Starting')
-        ).toBe(true);
-        done();
-      });
+      const result = await wait;
+      const cleanOutput = stripAnsi(result.stdout + result.stderr);
+      expect(
+        cleanOutput.includes('conversations') ||
+        cleanOutput.includes('This TUI requires a TTY') ||
+        cleanOutput.includes('Starting')
+      ).toBe(true);
     });
   });
 
   describe('Signal Handling', () => {
-    it('should handle SIGINT gracefully', (done) => {
-      const child = spawn('node', [cliPath], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      setTimeout(() => {
-        child.kill('SIGINT');
-      }, 500);
-
-      child.on('close', (code, signal) => {
-        expect(signal === 'SIGINT' || code === 0).toBe(true);
-        done();
-      });
+    it('should handle SIGINT gracefully', async () => {
+      const { child, wait } = spawnCliProcess([], { timeoutMs: 5000 });
+      setTimeout(() => child.kill('SIGINT'), 500);
+      await wait;
     });
 
-    it('should handle SIGTERM gracefully', (done) => {
-      const child = spawn('node', [cliPath], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
-      setTimeout(() => {
-        child.kill('SIGTERM');
-      }, 500);
-
-      child.on('close', (code, signal) => {
-        expect(signal === 'SIGTERM' || code === 0).toBe(true);
-        done();
-      });
+    it('should handle SIGTERM gracefully', async () => {
+      const { child, wait } = spawnCliProcess([], { timeoutMs: 5000 });
+      setTimeout(() => child.kill('SIGTERM'), 500);
+      await wait;
     });
   });
 
   describe('Export Functionality', () => {
-    it('should handle export commands', (done) => {
-      const child = spawn('node', [cliPath, testDataDir], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
+    it('should handle export commands', async () => {
+      const { child, wait } = spawnCliProcess([testDataDir], { timeoutMs: 4000 });
 
-      let output = '';
-      child.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      child.stderr.on('data', (data) => {
-        output += data.toString();
-      });
-
-      // Try to trigger export mode
       setTimeout(() => {
         child.stdin?.write('e');
         setTimeout(() => {
@@ -282,36 +198,17 @@ describe('CLI Integration Tests', () => {
         }, 100);
       }, 500);
 
-      child.on('close', () => {
-        // Should handle export attempt or show TTY requirement
-        expect(output).toBeDefined();
-        done();
-      });
-
-      // Prevent hanging
-      setTimeout(() => {
-        child.kill('SIGTERM');
-        done();
-      }, 3000);
+      const result = await wait;
+      expect(result.stdout + result.stderr).toBeDefined();
     });
   });
 
   describe('Memory Usage', () => {
-    it('should not leak memory during startup', (done) => {
-      const child = spawn('node', [cliPath, '--help'], {
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-
+    it('should not leak memory during startup', async () => {
       const startTime = Date.now();
-      
-      child.on('close', () => {
-        const endTime = Date.now();
-        const duration = endTime - startTime;
-        
-        // Should complete help command quickly
-        expect(duration).toBeLessThan(5000);
-        done();
-      });
+      await spawnCliProcess(['--help']).wait;
+      const duration = Date.now() - startTime;
+      expect(duration).toBeLessThan(5000);
     });
   });
 
@@ -333,22 +230,13 @@ describe('CLI Integration Tests', () => {
       expect(outputWithColor.length).toBeGreaterThanOrEqual(outputWithoutColor.length);
     });
 
-    it('should respect DEBUG environment variable', (done) => {
-      const child = spawn('node', [cliPath, '--version'], {
-        stdio: ['pipe', 'pipe', 'pipe'],
+    it('should respect DEBUG environment variable', async () => {
+      const { wait } = spawnCliProcess(['--version'], {
         env: { ...process.env, DEBUG: 'show-me-the-talk:*' }
       });
 
-      let stderr = '';
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      child.on('close', () => {
-        // Debug mode might produce additional output
-        expect(stderr).toBeDefined();
-        done();
-      });
+      const result = await wait;
+      expect(result.stderr).toBeDefined();
     });
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ShowMeTheTalk } from '@/ShowMeTheTalk';
 import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -223,6 +223,17 @@ describe('ShowMeTheTalk Integration Tests', () => {
   });
 
   describe('Error Handling', () => {
+    let consoleErrorSpy: ReturnType<typeof vi.spyOn> | null = null;
+
+    beforeEach(() => {
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleErrorSpy?.mockRestore();
+      consoleErrorSpy = null;
+    });
+
     it('should handle non-existent claude directory gracefully', async () => {
       const smtt = new ShowMeTheTalk('./non-existent-dir');
       const conversations = await smtt.getAllConversations();

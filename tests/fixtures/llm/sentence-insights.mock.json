@@ -1,0 +1,38 @@
+{
+  "totalSentences": 21,
+  "uniqueSentences": 15,
+  "averageSentenceLength": 45,
+  "averageSentencesPerConversation": 7,
+  "intentBreakdown": [
+    { "intent": "question", "count": 12, "percentage": 57.1 },
+    { "intent": "issue", "count": 6, "percentage": 28.6 },
+    { "intent": "request", "count": 3, "percentage": 14.3 }
+  ],
+  "topSentences": [
+    {
+      "sentence": "How do I fix this deployment error?",
+      "normalized": "how do i fix this deployment error",
+      "frequency": 4,
+      "intent": "issue",
+      "sentiment": "neutral",
+      "averageLength": 36,
+      "tags": ["deployment"],
+      "conversationCount": 3,
+      "sampleContexts": ["…fix this deployment error when using docker-compose?…"]
+    }
+  ],
+  "topQuestions": [
+    {
+      "sentence": "Can you walk me through the auth flow?",
+      "normalized": "can you walk me through the auth flow",
+      "frequency": 3,
+      "intent": "question",
+      "sentiment": "neutral",
+      "averageLength": 33,
+      "tags": ["auth"],
+      "conversationCount": 2,
+      "sampleContexts": ["…walk me through the auth flow step by step?…"]
+    }
+  ],
+  "troubleshootingSentences": []
+}

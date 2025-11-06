@@ -1,4 +1,4 @@
-import { AnalyticsReport, AnalyticsInsight } from '../../../domain/models/analytics/AnalyticsReport.js';
+import { AnalyticsReport, AnalyticsInsight, SentencePatternStat, SentenceIntent, SentenceSentiment } from '../../../domain/models/analytics/AnalyticsReport.js';
 import { WordCloudHtmlRenderer, WordCloudRenderOptions } from './WordCloudHtmlRenderer.js';
 import { SemanticCluster } from '../../../domain/models/analytics/SemanticCluster.js';
 import { HeatmapData } from '../../../domain/services/analytics/ConversationHeatmapService.js';
@@ -98,15 +98,11 @@ export class AnalyticsDashboardTemplate {
     ${report.wrappedStory ? this.generateWrappedStoryModal(report) : ''}
 
     <main class="dashboard-container">
-        <!-- TIER 2: SOCIAL PROOF -->
-        ${this.generateAchievementsSection(report)}
+        <!-- IMMERSIVE VISUALS FIRST -->
         ${this.generateHeatmapSection(report)}
-
-        <!-- TIER 3: IDENTITY -->
-        ${this.options.includeTechStack ? this.generateTechStackSection(report) : ''}
         ${this.options.includeWordCloud ? this.generateWordCloudSection(report) : ''}
 
-        <!-- TIER 4: DETAILED ANALYTICS (Collapsible) -->
+        <!-- DETAILED ANALYTICS (Collapsible) -->
         <details class="analytics-details" open>
             <summary class="analytics-summary">
                 <i class="fas fa-chart-bar"></i> View Detailed Analytics
@@ -114,12 +110,17 @@ export class AnalyticsDashboardTemplate {
             </summary>
             <div class="analytics-details-content">
                 ${this.generateOverviewSection(report)}
+                ${this.generateSentencePatternSection(report)}
+                ${this.options.includeTechStack ? this.generateTechStackSection(report) : ''}
                 ${this.options.includeTaskDistribution ? this.generateTaskDistributionSection(report) : ''}
                 ${this.options.includeTopicClusters ? this.generateTopicClustersSection(report) : ''}
                 ${this.options.includeTimeline ? this.generateTimelineSection(report) : ''}
                 ${this.options.includeInsights ? this.generateInsightsSection(report) : ''}
             </div>
         </details>
+
+        <!-- SOCIAL PROOF -->
+        ${this.generateAchievementsSection(report)}
     </main>
 
     ${this.generateFooter()}
@@ -677,6 +678,15 @@ export class AnalyticsDashboardTemplate {
             line-height: var(--leading-tight);
         }
 
+        .section-subtitle {
+            font-size: var(--text-xs);
+            font-weight: 600;
+            color: var(--text-secondary);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: var(--space-2);
+        }
+
         /* Collapsible Details Section */
         .analytics-details {
             margin-top: var(--space-12);
@@ -975,6 +985,35 @@ export class AnalyticsDashboardTemplate {
             margin-bottom: var(--space-6);
         }
 
+        .heatmap-controls {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: var(--space-2);
+            margin-bottom: var(--space-3);
+        }
+
+        .heatmap-controls label {
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .heatmap-year-select {
+            border: 1px solid var(--border);
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            padding: var(--space-2) var(--space-3);
+            border-radius: var(--radius-sm);
+            font-size: var(--text-sm);
+            min-width: 120px;
+        }
+
+        .heatmap-year-select:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .streak-card {
             display: flex;
             align-items: center;
@@ -1123,6 +1162,120 @@ export class AnalyticsDashboardTemplate {
         .legend-cell[data-level="2"] { background: #40c463; }
         .legend-cell[data-level="3"] { background: #30a14e; }
         .legend-cell[data-level="4"] { background: #216e39; }
+
+        /* Sentence Insights */
+        .sentence-section {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-6);
+        }
+
+        .sentence-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: var(--space-4);
+        }
+
+        .sentence-card {
+            border: 1px solid var(--border);
+            background: var(--bg-elevated);
+            padding: var(--space-4);
+            border-radius: var(--radius-lg);
+        }
+
+        .sentence-card .metric-label {
+            font-size: var(--text-xs);
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .sentence-card .metric-value {
+            font-size: var(--text-2xl);
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-top: var(--space-2);
+        }
+
+        .intent-pill-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+        }
+
+        .intent-pill {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: var(--space-1) var(--space-3);
+            font-size: var(--text-xs);
+            background: var(--bg-elevated);
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-1);
+        }
+
+        .sentence-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .sentence-table th,
+        .sentence-table td {
+            text-align: left;
+            padding: var(--space-3);
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+
+        .sentence-table th {
+            font-size: var(--text-xs);
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .sentence-text {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .sentence-meta {
+            font-size: var(--text-xs);
+            color: var(--text-tertiary);
+            margin-top: var(--space-1);
+            display: flex;
+            gap: var(--space-2);
+            flex-wrap: wrap;
+        }
+
+        .sentence-chip-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+        }
+
+        .sentence-chip {
+            padding: var(--space-1) var(--space-2);
+            background: rgba(0, 112, 243, 0.08);
+            color: var(--color-primary);
+            border-radius: 999px;
+            font-size: var(--text-xs);
+        }
+
+        .muted-text {
+            color: var(--text-tertiary);
+            font-size: var(--text-sm);
+        }
+
+        .sentence-dual-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: var(--space-4);
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
 
         .word-cloud-shell {
             background: var(--bg-elevated);
@@ -1745,28 +1898,78 @@ export class AnalyticsDashboardTemplate {
         return Array.from(dates);
     }
 
-    private getHeatmapRangeMonths(heatmap?: AnalyticsReport['heatmap']): number {
-        if (!heatmap) return 12;
+    private buildHeatmapYearData(heatmap: HeatmapData): Record<string, {
+        startDate: string;
+        endDate: string;
+        range: number;
+        series: Array<{ date: string; value: number }>;
+    }> {
+        const years: Record<string, {
+            startDate: string;
+            endDate: string;
+            range: number;
+            series: Array<{ date: string; value: number }>;
+        }> = {};
 
-        const start = new Date(heatmap.startDate);
-        const end = new Date(heatmap.endDate);
-
-        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-            return 12;
+        if (!heatmap || !heatmap.cells.length) {
+            const currentYear = new Date().getFullYear();
+            years[String(currentYear)] = this.buildSingleYearSeries(currentYear, new Map());
+            return years;
         }
 
-        const months = (end.getFullYear() - start.getFullYear()) * 12
-            + (end.getMonth() - start.getMonth())
-            + 1;
-        return Math.max(1, Math.min(months, 12));
+        const cellMap = new Map<string, number>();
+        heatmap.cells.forEach(cell => {
+            cellMap.set(cell.date, cell.count);
+        });
+
+        const startDate = new Date(heatmap.startDate);
+        const endDate = new Date(heatmap.endDate);
+        if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+            const currentYear = new Date().getFullYear();
+            years[String(currentYear)] = this.buildSingleYearSeries(currentYear, cellMap);
+            return years;
+        }
+
+        const startYear = startDate.getFullYear();
+        const endYear = endDate.getFullYear();
+
+        for (let year = startYear; year <= endYear; year++) {
+            years[String(year)] = this.buildSingleYearSeries(year, cellMap);
+        }
+
+        return years;
+    }
+
+    private buildSingleYearSeries(year: number, cellMap: Map<string, number>) {
+        const yearStart = new Date(Date.UTC(year, 0, 1));
+        const yearEnd = new Date(Date.UTC(year, 11, 31));
+        const series: Array<{ date: string; value: number }> = [];
+        const cursor = new Date(yearStart);
+
+        while (cursor <= yearEnd) {
+            const iso = cursor.toISOString().split('T')[0];
+            series.push({
+                date: iso,
+                value: cellMap.get(iso) ?? 0
+            });
+            cursor.setUTCDate(cursor.getUTCDate() + 1);
+        }
+
+        return {
+            startDate: yearStart.toISOString().split('T')[0],
+            endDate: yearEnd.toISOString().split('T')[0],
+            range: 12,
+            series
+        };
     }
 
     private createPlaceholderHeatmapData(months: number = 12): HeatmapData {
-        const end = new Date();
-        end.setHours(23, 59, 59, 999);
-        const start = new Date(end);
-        start.setMonth(start.getMonth() - (months - 1));
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const start = new Date(currentYear, 0, 1);
         start.setHours(0, 0, 0, 0);
+        const end = new Date(currentYear, 11, 31);
+        end.setHours(23, 59, 59, 999);
 
         const cells: HeatmapData['cells'] = [];
         const cursor = new Date(start);
@@ -1932,6 +2135,141 @@ export class AnalyticsDashboardTemplate {
             })),
             isPlaceholder: true
         };
+    }
+
+    private renderSentenceMetric(label: string, value: string): string {
+        return `<div class="sentence-card">
+            <div class="metric-label">${this.escapeHtml(label)}</div>
+            <div class="metric-value">${this.escapeHtml(value)}</div>
+        </div>`;
+    }
+
+    private formatSentenceIntentLabel(intent: SentenceIntent): string {
+        switch (intent) {
+            case 'issue':
+                return 'Troubleshooting';
+            case 'question':
+                return 'Questions';
+            case 'request':
+                return 'Requests';
+            case 'learning':
+                return 'Learning';
+            case 'planning':
+                return 'Planning';
+            case 'statement':
+            default:
+                return 'Statements';
+        }
+    }
+
+    private renderSentenceTableRow(entry: SentencePatternStat, index: number): string {
+        const intentLabel = this.formatSentenceIntentLabel(entry.intent);
+        const sentimentLabel = entry.sentiment.charAt(0).toUpperCase() + entry.sentiment.slice(1);
+        const sampleContext = entry.sampleContexts[0] ? `<div class="muted-text">${this.escapeHtml(entry.sampleContexts[0])}</div>` : '';
+        return `<tr>
+            <td>
+                <div class="sentence-text">${this.escapeHtml(entry.sentence)}</div>
+                <div class="sentence-meta">
+                    <span>${intentLabel}</span>
+                    <span>${sentimentLabel}</span>
+                    ${entry.tags.slice(0, 3).map(tag => `<span>${this.escapeHtml(tag)}</span>`).join('')}
+                </div>
+                ${sampleContext}
+            </td>
+            <td>${entry.frequency.toLocaleString()}</td>
+            <td>${entry.conversationCount.toLocaleString()}</td>
+            <td>${Math.round(entry.averageLength)} chars</td>
+        </tr>`;
+    }
+
+    private renderSentenceChip(entry: SentencePatternStat, label: string): string {
+        return `<span class="sentence-chip" title="${this.escapeHtml(entry.sentence)}">
+            <strong>${this.escapeHtml(label)}</strong> · ${this.escapeHtml(entry.sentence)}
+        </span>`;
+    }
+
+    private generateSentencePatternSection(report: AnalyticsReport): string {
+        const stats = report.sentencePatterns;
+        if (!stats) {
+            return `<section class="section sentence-section">
+            <div class="section-header">
+                <i class="fas fa-microphone"></i>
+                <h2>Signature Sentences</h2>
+            </div>
+            ${this.renderEmptyState('🗣️', 'Sentence analysis needs more conversations.', 'Add a few prompts so we can surface recurring phrases.')}
+        </section>`;
+        }
+
+        const metricsHtml = `<div class="sentence-metrics">
+                ${this.renderSentenceMetric('Sentences analyzed', stats.totalSentences.toLocaleString())}
+                ${this.renderSentenceMetric('Unique sentences', stats.uniqueSentences.toLocaleString())}
+                ${this.renderSentenceMetric('Avg sentence length', `${Math.round(stats.averageSentenceLength)} chars`)}
+                ${this.renderSentenceMetric('Sentences per conversation', stats.averageSentencesPerConversation.toFixed(1))}
+            </div>`;
+
+        const intentHtml = stats.intentBreakdown.map(entry => `
+            <span class="intent-pill">
+                <span>${this.escapeHtml(this.formatSentenceIntentLabel(entry.intent))}</span>
+                <strong>${entry.count}</strong>
+                <span>${entry.percentage.toFixed(1)}%</span>
+            </span>
+        `).join('');
+
+        const tableRows = stats.topSentences.length
+            ? stats.topSentences.map((entry, index) => this.renderSentenceTableRow(entry, index)).join('')
+            : `<tr><td colspan="4"><span class="muted-text">We need more conversations to surface recurring phrases.</span></td></tr>`;
+
+        const questionChips = stats.topQuestions.length
+            ? `<div class="sentence-chip-group">
+                ${stats.topQuestions.map((entry, idx) => this.renderSentenceChip(entry, `Q${idx + 1}`)).join('')}
+            </div>`
+            : `<p class="muted-text">No repeated questions yet.</p>`;
+
+        const issueChips = stats.troubleshootingSentences.length
+            ? `<div class="sentence-chip-group">
+                ${stats.troubleshootingSentences.map((entry, idx) => this.renderSentenceChip(entry, `Fix ${idx + 1}`)).join('')}
+            </div>`
+            : `<p class="muted-text">No recurring troubleshooting phrases.</p>`;
+
+        return `<section class="section sentence-section">
+        <div class="section-header">
+            <i class="fas fa-microphone"></i>
+            <h2>Signature Sentences</h2>
+        </div>
+        ${metricsHtml}
+        <div>
+            <h3 class="section-subtitle">Intent mix</h3>
+            <div class="intent-pill-group">${intentHtml}</div>
+        </div>
+        <div>
+            <h3 class="section-subtitle">Most repeated sentences</h3>
+            <div class="table-responsive">
+                <table class="sentence-table">
+                    <thead>
+                        <tr>
+                            <th>Sentence</th>
+                            <th>Hits</th>
+                            <th>Conversations</th>
+                            <th>Avg length</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="sentence-dual-grid">
+            <div>
+                <h3 class="section-subtitle">Top questions</h3>
+                ${questionChips}
+            </div>
+            <div>
+                <h3 class="section-subtitle">Troubleshooting refrains</h3>
+                ${issueChips}
+            </div>
+        </div>
+    </section>`;
     }
 
     private getWordCloudPlaceholderTokens(): string[] {
@@ -2185,9 +2523,20 @@ export class AnalyticsDashboardTemplate {
         const { cells, streak, stats } = heatmapData;
 
         const hasActivity = !!report.heatmap && cells.some(cell => cell.count > 0);
-        const heatmapSeries = cells.map(cell => ({ date: cell.date, value: cell.count }));
-        const heatmapRange = this.getHeatmapRangeMonths(report.heatmap ?? heatmapData);
         const highlightDates = this.getHeatmapHighlightDates(report);
+        const yearData = this.buildHeatmapYearData(heatmapData);
+        const yearKeys = Object.keys(yearData)
+            .map(year => parseInt(year, 10))
+            .filter(year => !Number.isNaN(year))
+            .sort((a, b) => a - b);
+        const defaultYear = yearKeys[yearKeys.length - 1] ?? new Date().getFullYear();
+        const yearOptions = yearKeys.map(year => `<option value="${year}" ${year === defaultYear ? 'selected' : ''}>${year}</option>`).join('');
+        const controlsHtml = `<div class="heatmap-controls">
+                <label for="heatmapYearSelect">Year</label>
+                <select id="heatmapYearSelect" class="heatmap-year-select" aria-label="Select heatmap year" ${yearKeys.length > 1 ? '' : 'disabled'}>
+                    ${yearOptions}
+                </select>
+            </div>`;
         const summaryHtml = `<div class="heatmap-summary">
                 <div class="streak-card ${streak.isActiveStreak ? 'active' : ''}">
                     <div class="streak-icon">🔥</div>
@@ -2231,6 +2580,7 @@ export class AnalyticsDashboardTemplate {
             <h2>Conversation Heatmap</h2>
         </div>
         ${summaryHtml}
+        ${controlsHtml}
         ${emptyLabel}
         <div class="${containerClass}" id="heatmapContainer"></div>
         <div class="heatmap-legend">
@@ -2243,13 +2593,10 @@ export class AnalyticsDashboardTemplate {
             <span class="legend-label">More</span>
         </div>
         <script>
-            window.heatmapSeries = ${JSON.stringify(heatmapSeries)};
-            window.heatmapConfig = ${JSON.stringify({
-                startDate: heatmapData.startDate,
-                endDate: heatmapData.endDate,
-                range: heatmapRange,
-                highlightDates
-            })};
+            window.heatmapYearData = ${JSON.stringify(yearData)};
+            window.heatmapAvailableYears = ${JSON.stringify(yearKeys)};
+            window.defaultHeatmapYear = ${JSON.stringify(defaultYear)};
+            window.heatmapConfig = ${JSON.stringify({ highlightDates })};
         </script>
     </section>`;
     }
@@ -3062,8 +3409,8 @@ export class AnalyticsDashboardTemplate {
         }
 
         // Initialize Heatmap
-        function initHeatmap() {
-            if (!window.heatmapSeries) return;
+        function initHeatmap(year) {
+            if (!window.heatmapYearData) return;
 
             const container = document.getElementById('heatmapContainer');
             if (!container) return;
@@ -3078,12 +3425,32 @@ export class AnalyticsDashboardTemplate {
                     return;
                 }
 
-                const config = window.heatmapConfig || {};
-                const startDate = config.startDate ? new Date(config.startDate) : undefined;
-                const highlightDates = Array.isArray(config.highlightDates)
-                    ? config.highlightDates.map(date => new Date(date))
+                const availableYears = Array.isArray(window.heatmapAvailableYears) && window.heatmapAvailableYears.length
+                    ? window.heatmapAvailableYears
+                    : Object.keys(window.heatmapYearData);
+                const fallbackYear = window.defaultHeatmapYear || (availableYears.length ? availableYears[availableYears.length - 1] : undefined);
+                const normalizedYear = year !== undefined && year !== null ? String(year) : undefined;
+                const targetYear = normalizedYear
+                    || (typeof window.selectedHeatmapYear === 'string' ? window.selectedHeatmapYear : undefined)
+                    || (fallbackYear !== undefined ? String(fallbackYear) : undefined);
+
+                if (!targetYear || !window.heatmapYearData[targetYear]) {
+                    console.warn('No heatmap data for year', targetYear);
+                    return;
+                }
+
+                window.selectedHeatmapYear = targetYear;
+                const yearData = window.heatmapYearData[targetYear];
+                const select = document.getElementById('heatmapYearSelect');
+                if (select && select.value !== targetYear) {
+                    select.value = targetYear;
+                }
+
+                const highlightDates = Array.isArray(window.heatmapConfig?.highlightDates)
+                    ? window.heatmapConfig.highlightDates
+                        .filter(date => date.startsWith(targetYear + '-'))
+                        .map(date => new Date(date))
                     : [];
-                const range = config.range || 12;
 
                 calHeatmapInstance = new CalHeatmap();
 
@@ -3108,10 +3475,10 @@ export class AnalyticsDashboardTemplate {
                 calHeatmapInstance.paint({
                     itemSelector: '#heatmapContainer',
                     date: {
-                        start: startDate,
+                        start: new Date(yearData.startDate),
                         highlight: highlightDates
                     },
-                    range: range,
+                    range: yearData.range,
                     domain: {
                         type: 'month',
                         gutter: 6,
@@ -3133,7 +3500,7 @@ export class AnalyticsDashboardTemplate {
                         radius: 2
                     },
                     data: {
-                        source: window.heatmapSeries,
+                        source: yearData.series,
                         x: function(entry) {
                             return new Date(entry.date);
                         },
@@ -3155,6 +3522,15 @@ export class AnalyticsDashboardTemplate {
             } catch (error) {
                 console.error('[Heatmap] Rendering failed', error);
             }
+        }
+
+        function bindHeatmapYearSelect() {
+            const select = document.getElementById('heatmapYearSelect');
+            if (!select || select.hasAttribute('data-init')) return;
+            select.setAttribute('data-init', 'true');
+            select.addEventListener('change', () => {
+                initHeatmap(select.value);
+            });
         }
 
         // Wrapped Story Functions
@@ -3217,7 +3593,8 @@ export class AnalyticsDashboardTemplate {
         window.addEventListener('DOMContentLoaded', () => {
             initTheme();
             initCountUpAnimations();
-            initHeatmap();
+            bindHeatmapYearSelect();
+            initHeatmap(window.defaultHeatmapYear);
             initTechStackChart();
             initTaskDistributionChart();
             initTimelineChart();

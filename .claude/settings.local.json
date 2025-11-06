@@ -67,7 +67,11 @@
       "Bash(npx eslint:*)",
       "Bash(npx prettier:*)",
       "mcp__sequential-thinking__sequentialthinking",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "WebSearch",
+      "WebFetch(domain:vercel.com)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:personal.sron.nl)"
     ],
     "deny": [
       "Bash(rm:*)",

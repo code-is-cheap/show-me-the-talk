@@ -2,6 +2,8 @@ import { ConversationApplicationService } from '../../application/services/Conve
 import { ExportFormat as AppExportFormat } from '../../application/dto/ExportDto.js';
 import { VisualTimelineRenderer } from './components/VisualTimelineRenderer.js';
 import { searchConversations } from './utils/conversationUtils.js';
+import { AnalyticsService } from '../../domain/services/analytics/AnalyticsService.js';
+import { AnalyticsReport } from '../../domain/models/analytics/AnalyticsReport.js';
 
 export interface TUIConfig {
     claudeDir: string;
@@ -10,10 +12,12 @@ export interface TUIConfig {
 
 export class ComprehensiveInkTUI {
     private conversationService: ConversationApplicationService;
+    private analyticsService: AnalyticsService;
     private options: TUIConfig;
 
     constructor(conversationService: ConversationApplicationService, options: TUIConfig = { claudeDir: '', debug: false }) {
         this.conversationService = conversationService;
+        this.analyticsService = new AnalyticsService();
         this.options = options;
     }
 
@@ -64,7 +68,9 @@ export class ComprehensiveInkTUI {
                     importId: '',
                     currentPage: 0,
                     itemsPerPage: 20,
-                    totalItems: 0
+                    totalItems: 0,
+                    analyticsReport: null,
+                    analyticsView: 'menu'
                 });
 
                 // Load initial data on mount
@@ -180,6 +186,9 @@ export class ComprehensiveInkTUI {
             case 'error':
                 this.handleErrorInput(input, key, state, setState);
                 break;
+            case 'analytics':
+                this.handleAnalyticsInput(input, key, state, setState);
+                break;
         }
     }
 
@@ -234,6 +243,9 @@ export class ComprehensiveInkTUI {
             }));
         } else if (key.return || input === '\r') {
             this.selectConversation(state, setState);
+        } else if (input === 'a') {
+            // Enter analytics mode
+            this.enterAnalyticsMode(state, setState);
         } else if (input === 's' || input === '/') {
             setState((prev: any) => ({
                 ...prev,
@@ -629,9 +641,186 @@ export class ComprehensiveInkTUI {
         }));
     }
 
+    private handleAnalyticsInput(input: string, key: any, state: any, setState: any): void {
+        if (key.escape || input === '\u001b' || input === 'b') {
+            setState((prev: any) => ({
+                ...prev,
+                currentScreen: 'conversation-list',
+                analyticsView: 'menu'
+            }));
+        } else if (input === 'w') {
+            setState((prev: any) => ({ ...prev, analyticsView: 'wordcloud' }));
+        } else if (input === 'c') {
+            setState((prev: any) => ({ ...prev, analyticsView: 'clusters' }));
+        } else if (input === 't') {
+            setState((prev: any) => ({ ...prev, analyticsView: 'timeline' }));
+        } else if (input === 'i') {
+            setState((prev: any) => ({ ...prev, analyticsView: 'insights' }));
+        } else if (input === 'e') {
+            this.exportAnalyticsToHTML(state, setState);
+        } else if (input === 'q') {
+            process.exit(0);
+        }
+    }
+
+    private async enterAnalyticsMode(state: any, setState: any): Promise<void> {
+        try {
+            setState((prev: any) => ({
+                ...prev,
+                loading: true,
+                statusMessage: 'Generating analytics report...'
+            }));
+
+            // Generate analytics report from current conversations
+            const report = await this.analyticsService.generateReport(state.filteredConversations);
+
+            setState((prev: any) => ({
+                ...prev,
+                loading: false,
+                currentScreen: 'analytics',
+                analyticsReport: report,
+                analyticsView: 'menu',
+                statusMessage: 'Analytics report generated successfully'
+            }));
+        } catch (error) {
+            setState((prev: any) => ({
+                ...prev,
+                loading: false,
+                error: `Failed to generate analytics: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                currentScreen: 'error'
+            }));
+        }
+    }
+
+    private async exportAnalyticsToHTML(state: any, setState: any): Promise<void> {
+        try {
+            if (!state.analyticsReport) {
+                setState((prev: any) => ({
+                    ...prev,
+                    statusMessage: 'No analytics report available'
+                }));
+                return;
+            }
+
+            setState((prev: any) => ({
+                ...prev,
+                loading: true,
+                statusMessage: 'Exporting analytics to HTML...'
+            }));
+
+            const timestamp = Date.now();
+            const outputPath = `analytics-report-${timestamp}.html`;
+
+            // Generate HTML content
+            const htmlContent = this.generateAnalyticsHTML(state.analyticsReport);
+            const fs = await import('fs/promises');
+            await fs.writeFile(outputPath, htmlContent, 'utf-8');
+
+            setState((prev: any) => ({
+                ...prev,
+                loading: false,
+                statusMessage: `Analytics exported to ${outputPath}`
+            }));
+        } catch (error) {
+            setState((prev: any) => ({
+                ...prev,
+                loading: false,
+                error: `Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                currentScreen: 'error'
+            }));
+        }
+    }
+
+    private generateAnalyticsHTML(report: any): string {
+        const jsonData = JSON.stringify(report.toJSON(), null, 2);
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code Analytics Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        .section {
+            background: white;
+            padding: 30px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { margin: 0 0 10px 0; }
+        h2 { color: #667eea; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        .stat { display: inline-block; margin: 10px 20px 10px 0; }
+        .stat-value { font-size: 2em; font-weight: bold; color: #667eea; }
+        .stat-label { color: #666; }
+        .insight { padding: 15px; margin: 10px 0; border-left: 4px solid #667eea; background: #f9f9f9; }
+        .insight.high { border-left-color: #e74c3c; }
+        .insight.medium { border-left-color: #f39c12; }
+        .insight.low { border-left-color: #95a5a6; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 Claude Code Analytics Report</h1>
+        <p>Generated on ${new Date().toLocaleString()}</p>
+    </div>
+
+    <div class="section">
+        <h2>Summary</h2>
+        <pre>${report.getSummary()}</pre>
+    </div>
+
+    <div class="section">
+        <h2>Statistics</h2>
+        <div class="stat">
+            <div class="stat-value">${report.statistics.totalConversations}</div>
+            <div class="stat-label">Conversations</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">${report.statistics.totalMessages}</div>
+            <div class="stat-label">Messages</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">${report.statistics.totalWords}</div>
+            <div class="stat-label">Words</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Key Insights</h2>
+        ${report.insights.map((insight: any) => `
+            <div class="insight ${insight.importance}">
+                <h3>${insight.title}</h3>
+                <p>${insight.description}</p>
+            </div>
+        `).join('')}
+    </div>
+
+    <div class="section">
+        <h2>Full Report Data (JSON)</h2>
+        <pre>${jsonData}</pre>
+    </div>
+</body>
+</html>`;
+    }
+
     private renderScreen(state: any, setState: any, React: any, inkComponents: any): any {
         const { Box, Text } = inkComponents;
-        
+
         switch (state.currentScreen) {
             case 'loading':
                 return this.renderLoadingScreen(React, Box, Text);
@@ -651,6 +840,8 @@ export class ComprehensiveInkTUI {
                 return this.renderHelpScreen(state, React, Box, Text);
             case 'error':
                 return this.renderErrorScreen(state, React, Box, Text);
+            case 'analytics':
+                return this.renderAnalyticsScreen(state, setState, React, Box, Text);
             default:
                 return React.createElement(Text, { color: 'red' }, 'Unknown screen');
         }
@@ -732,8 +923,8 @@ export class ComprehensiveInkTUI {
                 `... and ${conversations.length - 20} more`
             ),
             React.createElement(Box, { key: 'spacer2' }),
-            React.createElement(Box, { key: 'controls', borderStyle: 'single', borderColor: 'gray' }, 
-                React.createElement(Text, { color: 'gray' }, ' ↑↓:nav | ↵:view | s:search | e:export | i:import | ESC:back | h:help ')
+            React.createElement(Box, { key: 'controls', borderStyle: 'single', borderColor: 'gray' },
+                React.createElement(Text, { color: 'gray' }, ' ↑↓:nav | ↵:view | a:analytics | s:search | e:export | ESC:back | h:help ')
             )
         ]);
     }
@@ -1102,6 +1293,7 @@ export class ComprehensiveInkTUI {
                 title: 'Conversation List',
                 shortcuts: [
                     's            - Search conversations',
+                    'a            - Analytics dashboard',
                     'e            - Export conversations',
                     'i            - Import conversation by ID'
                 ]
@@ -1159,6 +1351,78 @@ export class ComprehensiveInkTUI {
             React.createElement(Text, { key: 'message', color: 'white' }, state.error || 'Unknown error'),
             React.createElement(Box, { key: 'spacer2' }),
             React.createElement(Text, { key: 'continue', color: 'gray' }, 'Press any key to continue...')
+        ]);
+    }
+
+    private async renderAnalyticsScreen(state: any, setState: any, React: any, Box: any, Text: any): Promise<any> {
+        if (state.loading) {
+            return React.createElement(Box, {
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center'
+            }, [
+                React.createElement(Text, { key: 'loading', color: 'cyan' }, '⏳ Generating analytics...'),
+                React.createElement(Text, { key: 'wait', color: 'gray' }, 'Please wait...')
+            ]);
+        }
+
+        if (!state.analyticsReport) {
+            return React.createElement(Box, { flexDirection: 'column' }, [
+                React.createElement(Text, { key: 'error', color: 'red' }, 'No analytics report available')
+            ]);
+        }
+
+        const report = state.analyticsReport;
+
+        // Dynamically import analytics components
+        const { TerminalWordCloud } = await import('./components/analytics/TerminalWordCloud.js');
+        const { ClustersSummary } = await import('./components/analytics/ClustersSummary.js');
+        const { TimelineView } = await import('./components/analytics/TimelineView.js');
+        const { InsightsPanel } = await import('./components/analytics/InsightsPanel.js');
+        const { AnalyticsMenu } = await import('./components/analytics/AnalyticsMenu.js');
+
+        let content;
+        switch (state.analyticsView) {
+            case 'wordcloud':
+                content = React.createElement(TerminalWordCloud, {
+                    wordCloud: report.wordCloud,
+                    limit: 20
+                });
+                break;
+            case 'clusters':
+                content = React.createElement(ClustersSummary, {
+                    techStackClusters: report.techStackClusters,
+                    taskTypeClusters: report.taskTypeClusters,
+                    topicClusters: report.topicClusters
+                });
+                break;
+            case 'timeline':
+                content = React.createElement(TimelineView, {
+                    timeline: report.timeline
+                });
+                break;
+            case 'insights':
+                content = React.createElement(InsightsPanel, {
+                    insights: report.insights
+                });
+                break;
+            case 'menu':
+            default:
+                content = React.createElement(AnalyticsMenu, {
+                    selectedOption: 'w'
+                });
+                break;
+        }
+
+        return React.createElement(Box, { flexDirection: 'column' }, [
+            React.createElement(Box, { key: 'header', borderStyle: 'single', borderColor: 'blue' },
+                React.createElement(Text, { bold: true, color: 'blue' }, ` Analytics Dashboard - ${state.analyticsView.toUpperCase()} `)
+            ),
+            state.statusMessage && React.createElement(Text, { key: 'status', color: 'cyan' }, `ℹ️  ${state.statusMessage}`),
+            React.createElement(Box, { key: 'content', flexDirection: 'column', marginTop: 1 }, content),
+            React.createElement(Box, { key: 'footer', marginTop: 1, borderStyle: 'single', borderColor: 'gray' },
+                React.createElement(Text, { color: 'gray' }, ' w:wordcloud | c:clusters | t:timeline | i:insights | e:export | b:back | q:quit ')
+            )
         ]);
     }
 

@@ -395,8 +395,9 @@ The backend service handles token generation and validation, while the frontend 
       expect(markdownResult.content).toContain('<script>alert("xss")</script>');
       expect(markdownResult.content).toContain('`dangerous`');
 
-      // Current implementation may not escape HTML properly
-      expect(htmlResult.content).toContain('<script>alert("xss")</script>');
+      // HTML output should escape script tags but preserve inline code styling
+      expect(htmlResult.content).not.toContain('<script>alert("xss")</script>');
+      expect(htmlResult.content).toContain('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
       expect(htmlResult.content).toContain('<code>dangerous</code>');
     });
   });

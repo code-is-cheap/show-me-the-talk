@@ -65,3 +65,10 @@ coverage/
 *.temp
 .cache/backup/
 backup/
+
+# NPM package artifacts
+*.tgz
+
+# Test output files
+test-*.html
+*-report.html

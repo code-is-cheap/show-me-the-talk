@@ -2,6 +2,7 @@ import { AnalyticsReport, AnalyticsInsight, SentencePatternStat, SentenceIntent,
 import { WordCloudHtmlRenderer, WordCloudRenderOptions } from './WordCloudHtmlRenderer.js';
 import { SemanticCluster } from '../../../domain/models/analytics/SemanticCluster.js';
 import { HeatmapData } from '../../../domain/services/analytics/ConversationHeatmapService.js';
+import { UsageReport as UsageCostReport } from '../../../domain/models/usage/UsageReport.js';
 
 /**
  * Dashboard theme options
@@ -84,7 +85,7 @@ export class AnalyticsDashboardTemplate {
     /**
      * Render complete dashboard HTML
      */
-    render(report: AnalyticsReport): string {
+    render(report: AnalyticsReport, usageReport?: UsageCostReport): string {
         return `<!DOCTYPE html>
 <html lang="en" data-theme="${this.options.theme}">
 <head>
@@ -110,6 +111,7 @@ export class AnalyticsDashboardTemplate {
             </summary>
             <div class="analytics-details-content">
                 ${this.generateOverviewSection(report)}
+                ${this.generateUsageCostSection(usageReport)}
                 ${this.generateSentencePatternSection(report)}
                 ${this.options.includeTechStack ? this.generateTechStackSection(report) : ''}
                 ${this.options.includeTaskDistribution ? this.generateTaskDistributionSection(report) : ''}
@@ -124,7 +126,7 @@ export class AnalyticsDashboardTemplate {
     </main>
 
     ${this.generateFooter()}
-    ${this.generateScripts(report)}
+    ${this.generateScripts(report, usageReport)}
 </body>
 </html>`;
     }
@@ -2068,6 +2070,233 @@ export class AnalyticsDashboardTemplate {
     </section>`;
     }
 
+    private generateUsageCostSection(usageReport?: UsageCostReport): string {
+        const header = `<div class="section-header">
+            <i class="fas fa-coins"></i>
+            <h2>Usage Cost Pulse</h2>
+            <span class="section-subtitle">Powered by ccusage</span>
+        </div>`;
+
+        if (!usageReport || !usageReport.entries?.length) {
+            const command = 'ccshow --cost-report cost-usage.json --cost-group daily';
+            return `<section class="section" id="usage-cost">
+                ${header}
+                ${this.renderEmptyState('💰', 'Attach your ccusage report', 'Run the ccusage export to unlock cost insights inside this dashboard.', command)}
+            </section>`;
+        }
+
+        const totals = usageReport.totals;
+        const distribution = usageReport.costDistribution;
+        const tokenEfficiency = usageReport.tokenEfficiency;
+        const topModel = usageReport.modelUsage[0];
+        const topEntry = usageReport.topEntries?.byCost?.[0];
+        const streaks = usageReport.streaks;
+
+        const heroCards = [
+            {
+                icon: '💵',
+                label: 'Total Spend',
+                value: this.formatCurrency(totals.costUSD),
+                meta: `${totals.entryCount} ${usageReport.grouping} entries`
+            },
+            {
+                icon: '⚡',
+                label: 'Avg per Entry',
+                value: this.formatCurrency(usageReport.averageCostPerEntry),
+                meta: distribution
+                    ? `Median ${this.formatCurrency(distribution.median)}`
+                    : 'Keep it steady'
+            },
+            {
+                icon: '🧠',
+                label: 'Cost / 1K tokens',
+                value: this.formatCurrency(tokenEfficiency?.costPerThousandTokens ?? 0, 3),
+                meta: `${this.formatCompactNumber(totals.totalTokens)} tokens analyzed`
+            },
+            topModel
+                ? {
+                    icon: '🏆',
+                    label: 'Top Model',
+                    value: this.escapeHtml(topModel.model),
+                    meta: `${this.formatPercentage(topModel.shareOfCost * 100)} of spend`
+                }
+                : {
+                    icon: '🏆',
+                    label: 'Model Mix',
+                    value: 'Blended',
+                    meta: 'Attach breakdowns via --breakdown'
+                }
+        ];
+
+        const heroHtml = `<div class="overview-grid usage-cost-grid">
+            ${heroCards.map(card => `<div class="stat-card">
+                <div class="stat-label">${this.escapeHtml(card.label)}</div>
+                <div class="stat-value" style="font-size: 2.4rem;">${card.value}</div>
+                <div class="stat-meta">${this.escapeHtml(card.meta)}</div>
+            </div>`).join('')}
+        </div>`;
+
+        const peakMeta = topEntry
+            ? `<p class="stat-meta" style="margin-top: 0.5rem;">Peak day ${this.escapeHtml(this.getUsageEntryLabel(topEntry))} • ${this.formatCurrency(topEntry.costUSD)} · ${this.formatCompactNumber(topEntry.totalTokens)} tokens</p>`
+            : '';
+
+        const distributionMeta = distribution
+            ? `<p class="stat-meta">Median ${this.formatCurrency(distribution.median)} · P90 ${this.formatCurrency(distribution.percentile90)}</p>`
+            : '';
+
+        const segmentsHtml = this.renderCostSegments(usageReport);
+        const spikesHtml = this.renderCostSpikes(usageReport);
+        const recsHtml = this.renderCostRecommendations(usageReport);
+        const streakHtml = this.renderCostStreaks(streaks);
+
+        return `<section class="section" id="usage-cost">
+            ${header}
+            ${heroHtml}
+            <div class="chart-container">
+                <h3 style="margin-top:0;"><i class="fas fa-chart-line"></i> Daily Spend Trend</h3>
+                ${distributionMeta}
+                <canvas id="costTrendChart" class="chart-canvas"></canvas>
+                ${peakMeta}
+            </div>
+            <div class="insights-grid">
+                <div class="insight-card">
+                    <div class="insight-indicator"></div>
+                    <div class="insight-content">
+                        <div class="insight-header">
+                            <span class="insight-badge">Segments</span>
+                            <h3 class="insight-title">Where spend happens</h3>
+                        </div>
+                        ${segmentsHtml}
+                    </div>
+                </div>
+                <div class="insight-card">
+                    <div class="insight-indicator"></div>
+                    <div class="insight-content">
+                        <div class="insight-header">
+                            <span class="insight-badge">Top spikes</span>
+                            <h3 class="insight-title">Share-worthy moments</h3>
+                        </div>
+                        ${spikesHtml}
+                    </div>
+                </div>
+                <div class="insight-card">
+                    <div class="insight-indicator"></div>
+                    <div class="insight-content">
+                        <div class="insight-header">
+                            <span class="insight-badge">Recommendations</span>
+                            <h3 class="insight-title">Instant savings ideas</h3>
+                        </div>
+                        ${recsHtml}
+                    </div>
+                </div>
+                <div class="insight-card">
+                    <div class="insight-indicator"></div>
+                    <div class="insight-content">
+                        <div class="insight-header">
+                            <span class="insight-badge">Streaks</span>
+                            <h3 class="insight-title">Consistency check</h3>
+                        </div>
+                        ${streakHtml}
+                    </div>
+                </div>
+            </div>
+        </section>`;
+    }
+
+    private renderCostSegments(usageReport: UsageCostReport): string {
+        if (!usageReport.segments?.length) {
+            return '<p class="stat-meta">Add ccusage --instances to unlock per-project segments.</p>';
+        }
+
+        return `<ul>
+            ${usageReport.segments.slice(0, 4).map(segment => `
+                <li>
+                    <strong>${this.escapeHtml(segment.label)}</strong> · ${this.formatCurrency(segment.totalCostUSD)} · ${this.formatPercentage(segment.shareOfCost * 100)} share
+                </li>
+            `).join('')}
+        </ul>`;
+    }
+
+    private renderCostSpikes(usageReport: UsageCostReport): string {
+        const spikes = usageReport.topEntries?.byCost?.slice(0, 3) ?? [];
+        if (!spikes.length) {
+            return '<p class="stat-meta">No notable spikes yet. Keep building!</p>';
+        }
+
+        return `<ul>
+            ${spikes.map(entry => `
+                <li>
+                    <strong>${this.escapeHtml(this.getUsageEntryLabel(entry))}</strong>
+                    <br>${this.formatCurrency(entry.costUSD)} · ${this.formatCompactNumber(entry.totalTokens)} tokens
+                </li>
+            `).join('')}
+        </ul>`;
+    }
+
+    private renderCostRecommendations(usageReport: UsageCostReport): string {
+        const recs = usageReport.recommendations?.slice(0, 3) ?? [];
+        if (!recs.length) {
+            return '<p class="stat-meta">Costs look steady. Capture more data to unlock suggestions.</p>';
+        }
+
+        return `<ul>
+            ${recs.map(rec => `
+                <li>
+                    <strong>${this.escapeHtml(rec.title)}</strong>
+                    <br>${this.escapeHtml(rec.description)}
+                    <br><em>${this.escapeHtml(rec.suggestion)}</em>
+                    ${rec.potentialSavingsUSD ? `<br><span class="stat-meta">Potential: ${this.formatCurrency(rec.potentialSavingsUSD)}</span>` : ''}
+                </li>
+            `).join('')}
+        </ul>`;
+    }
+
+    private renderCostStreaks(streaks?: UsageCostReport['streaks']): string {
+        if (!streaks) {
+            return '<p class="stat-meta">Keep shipping to unlock streak insights.</p>';
+        }
+
+        return `<ul>
+            <li><strong>${streaks.longestPaidRun}</strong> day paid run</li>
+            <li><strong>${streaks.longestIdleGap}</strong> day cooldown</li>
+            <li><strong>${streaks.totalActiveDays}</strong> active days</li>
+            <li><strong>${streaks.totalZeroCostDays}</strong> zero-cost resets</li>
+        </ul>`;
+    }
+
+    private formatCurrency(value: number, maxFractionDigits = 2): string {
+        const safeValue = Number.isFinite(value) ? value : 0;
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: maxFractionDigits
+        }).format(safeValue);
+    }
+
+    private formatCompactNumber(value: number): string {
+        const safeValue = Number.isFinite(value) ? value : 0;
+        return new Intl.NumberFormat('en-US', {
+            notation: 'compact',
+            maximumFractionDigits: 1
+        }).format(safeValue);
+    }
+
+    private formatPercentage(value: number, decimals = 1): string {
+        const safeValue = Number.isFinite(value) ? value : 0;
+        return `${safeValue.toFixed(decimals)}%`;
+    }
+
+    private getUsageEntryLabel(entry: UsageCostReport['entries'][number]): string {
+        const candidates = [entry.label, entry.metadata?.date, entry.id];
+        for (const candidate of candidates) {
+            if (typeof candidate === 'string' && candidate.trim().length) {
+                return candidate.trim();
+            }
+        }
+        return 'Entry';
+    }
+
     /**
      * Generate word cloud section
      */
@@ -2915,10 +3144,30 @@ export class AnalyticsDashboardTemplate {
     </footer>`;
     }
 
+    private generateUsageScriptPayload(usageReport?: UsageCostReport): string {
+        if (!usageReport || !usageReport.entries?.length) {
+            return '';
+        }
+        const dataset = this.getUsageTrendDataset(usageReport);
+        return `window.costTrendData = ${JSON.stringify(dataset)};`;
+    }
+
+    private getUsageTrendDataset(usageReport: UsageCostReport): { labels: string[]; values: number[]; median: number; percentile90: number; } {
+        const limit = Math.min(usageReport.entries.length, 90);
+        const entries = usageReport.entries.slice(-limit);
+        return {
+            labels: entries.map(entry => this.getUsageEntryLabel(entry)),
+            values: entries.map(entry => Number((entry.costUSD ?? 0).toFixed(3))),
+            median: usageReport.costDistribution?.median ?? usageReport.averageCostPerEntry ?? 0,
+            percentile90: usageReport.costDistribution?.percentile90 ?? usageReport.averageCostPerEntry ?? 0
+        };
+    }
+
     /**
      * Generate all JavaScript code
      */
-    private generateScripts(report: AnalyticsReport): string {
+    private generateScripts(report: AnalyticsReport, usageReport?: UsageCostReport): string {
+        const usagePayload = this.generateUsageScriptPayload(usageReport);
         return `<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3-cloud@1.2.7/build/d3.layout.cloud.min.js"></script>
@@ -2929,6 +3178,8 @@ export class AnalyticsDashboardTemplate {
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
     <script>
         let calHeatmapInstance;
+        let costTrendChartInstance;
+        ${usagePayload}
 
         // Theme management
         function toggleTheme() {
@@ -3061,6 +3312,100 @@ export class AnalyticsDashboardTemplate {
                                     size: 13,
                                     weight: '500'
                                 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function initCostTrendChart() {
+            if (!window.costTrendData) return;
+            const canvas = document.getElementById('costTrendChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height || 240);
+            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.35)');
+            gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+
+            if (costTrendChartInstance) {
+                costTrendChartInstance.destroy();
+            }
+
+            const labels = window.costTrendData.labels;
+            const values = window.costTrendData.values;
+            const median = window.costTrendData.median || 0;
+            const p90 = window.costTrendData.percentile90 || 0;
+
+            costTrendChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Daily spend',
+                            data: values,
+                            fill: true,
+                            borderColor: '#10b981',
+                            backgroundColor: gradient,
+                            tension: 0.35,
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            pointHoverRadius: 4
+                        },
+                        {
+                            label: 'Median',
+                            data: labels.map(() => median),
+                            borderColor: '#fbbf24',
+                            borderDash: [6, 6],
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            fill: false
+                        },
+                        {
+                            label: 'P90',
+                            data: labels.map(() => p90),
+                            borderColor: '#f472b6',
+                            borderDash: [2, 4],
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return \`$\${context.parsed.y.toFixed(2)}\`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: (value) => '$' + value
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: 6
                             }
                         }
                     }
@@ -3599,6 +3944,7 @@ export class AnalyticsDashboardTemplate {
             initTaskDistributionChart();
             initTimelineChart();
             initWordCloud();
+            initCostTrendChart();
 
             // Set initial theme button state for word cloud
             changeWordCloudTheme('tableau10');
@@ -3607,6 +3953,7 @@ export class AnalyticsDashboardTemplate {
         // Re-render word cloud on resize
         window.addEventListener('resize', () => {
             setTimeout(initWordCloud, 100);
+            setTimeout(initCostTrendChart, 200);
         });
     </script>`;
     }

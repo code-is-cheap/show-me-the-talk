@@ -54,6 +54,7 @@ A growth-hacking focused dashboard with:
 - **Contribution heatmap** - 365-day GitHub-style activity grid with streaks
 - **Wrapped Story** - 8 swipeable full-screen cards (Instagram Stories format)
 - **4-tier hierarchy** - Hero → Social Proof → Identity → Details (collapsed)
+- **Usage Cost Pulse (opt-in)** - Detects `ccusage` output and weaves spend analytics into the same HTML artifact without changing the layout
 
 ### Design Philosophy
 Following proven viral patterns:
@@ -236,6 +237,11 @@ Self-Contained HTML (117 KB)
    - Twitter intent with #ClaudeWrapped hashtag
    - LinkedIn share dialog
    - Download placeholder (future: image generation)
+
+5. **Usage Cost Pulse (opt-in)**
+   - Dashboard auto-detects a `ccusage-report.json` dropped next to the export
+   - Reuses existing overview grid + Chart.js styles to render spend totals, trend, segments, and streak callouts
+   - Falls back to the standard empty state if no cost file exists (no layout rewrites required)
 
 **New Services Created:**
 - `DeveloperPersonaService.ts` (322 lines)
@@ -700,6 +706,11 @@ show-me-the-talk -o my-report.html
 - See charts, timeline, insights
 - Collapse to hide
 
+**Usage Cost Pulse (optional):**
+- Run `ccshow --cost-report cost-usage.json --cost-group weekly --cost-since <yyyymmdd>` before exporting
+- Keep the resulting JSON in the same directory as the HTML output so the section lights up automatically
+- If the JSON is missing, the section hides itself—no more half-rendered charts or confusing placeholders
+
 ---
 
 ### For Developers
@@ -922,6 +933,17 @@ function openWrappedStory() {
         console.log('Swiper initialized:', wrappedSwiper);
     }
 }
+```
+
+**Refresh Usage Cost Pulse data:**
+```bash
+# 1. Capture the spend window you want to showcase (daily/weekly/monthly)
+ccshow --cost-report ccusage-report.json --cost-group daily --cost-since 20250101 --cost-until 20251106
+
+# 2. Regenerate the analytics HTML so the section ingests the latest JSON
+npx tsx scripts/test-analytics.ts
+
+# 3. Ship/share – the HTML now includes the spend stats alongside the Wrapped story
 ```
 
 ---

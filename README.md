@@ -19,6 +19,7 @@ A TypeScript library and CLI tool for parsing, analyzing, and exporting Claude C
 - **🏆 Gamified Achievement System**: Unlock 10 badges from Common to Legendary across 4 categories
 - **📅 365-Day Contribution Heatmap**: GitHub-style activity grid with streak tracking and FOMO mechanisms
 - **🎬 Wrapped Story Mode**: 8 swipeable full-screen cards optimized for Instagram Stories sharing
+- **💵 ccusage Cost Analysis**: Generate structured spend reports via the official ccusage CLI and our parser
 - **⚡ Multiple Export Formats**: JSON, Markdown, Simple, and Enhanced HTML with Time Machine
 - **🤖 Smart Conversation Analysis**: Auto-categorize by debugging, architecture, learning, etc.
 - **📁 Project-based Organization**: Group and navigate conversations by project context
@@ -78,6 +79,32 @@ ccshow -f markdown -o project.md -p "/path/to/project"
 # Export single conversation session
 ccshow -f html -o session.html -s "session-id-here"
 ```
+
+### Cost Analysis via ccusage
+
+Generate Claude Code spend analytics directly from the canonical `ccusage` CLI and save the normalized report for dashboards or further processing:
+
+```bash
+ccshow \
+  --cost-report cost-usage.json \
+  --cost-group daily \
+  --cost-since 20241001 \
+  --cost-until 20241106
+```
+
+The tool shells out to `ccusage --json`, captures the structured output (including per-model breakdowns), and produces a rich summary containing totals, model shares, recommendations, and optional per-project sections (via `--cost-instances`).
+
+When a `ccusage-report.json` file lives alongside your export, the advanced HTML dashboard automatically unlocks a **Usage Cost Pulse** section with viral-ready spend cards, Chart.js daily trend overlays, streak badges, and optimization tips. That means your Wrapped-style analytics and your Claude spend story now share the same shareable HTML artifact.
+
+> Tip: run the workflow above *before* `npx tsx scripts/test-analytics.ts` (or before exporting from the TUI) so the generator auto-detects the cost JSON and injects the additional section without extra CLI flags.
+
+#### Tracking Progress Without Surprises
+
+1. **Capture spend snapshot** – run `ccshow --cost-report cost-usage.json --cost-group weekly --cost-since <start> --cost-until <end>` whenever you want a new checkpoint. Keep the JSON in your project root.
+2. **Regenerate the dashboard** – `npx tsx scripts/test-analytics.ts` (or export from the TUI/CLI). The HTML detects the latest `cost-usage.json` automatically and refreshes the Usage Cost Pulse numbers.
+3. **Share or archive** – each HTML embed now contains both learning analytics and spend analytics so you can compare checkpoints over time without hunting for separate files.
+
+> If you skip step 1 the dashboard simply hides the Usage Cost Pulse block, so you never have half-baked charts or confusing empty states.
 
 ## 🛠️ Usage
 

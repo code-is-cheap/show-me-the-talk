@@ -2,6 +2,8 @@
 
 import { ShowMeTheTalk } from '../../ShowMeTheTalk.js';
 import { ConversationApplicationService } from '../../application/services/ConversationApplicationService.js';
+import { CostAnalysisApplicationService } from '../../application/services/CostAnalysisApplicationService.js';
+import { UsageGrouping } from '../../domain/models/usage/UsageReport.js';
 import { resolve } from 'path';
 import { homedir } from 'os';
 import { readFileSync } from 'fs';
@@ -16,6 +18,17 @@ interface ParsedArgs {
     help?: boolean;
     version?: boolean;
     tui?: boolean;
+    costReport?: string;
+    costGroup?: UsageGrouping;
+    costSince?: string;
+    costUntil?: string;
+    costProject?: string;
+    costMode?: 'auto' | 'calculate' | 'display';
+    costTimezone?: string;
+    costLocale?: string;
+    costOrder?: 'asc' | 'desc';
+    costBreakdown?: boolean;
+    costInstances?: boolean;
 }
 
 function parseArgs(): ParsedArgs {
@@ -87,10 +100,81 @@ function parseArgs(): ParsedArgs {
             case '--tui':
                 parsed.tui = true;
                 break;
+            case '--cost-report':
+                if (nextArg) {
+                    parsed.costReport = nextArg;
+                    i++;
+                }
+                break;
+            case '--cost-group':
+                if (nextArg && isValidUsageGrouping(nextArg)) {
+                    parsed.costGroup = nextArg;
+                    i++;
+                } else if (nextArg) {
+                    console.error(`❌ Invalid cost grouping: ${nextArg}`);
+                    console.error('Valid values: daily, weekly, monthly, session, blocks');
+                    process.exit(1);
+                }
+                break;
+            case '--cost-since':
+                if (nextArg) {
+                    parsed.costSince = nextArg;
+                    i++;
+                }
+                break;
+            case '--cost-until':
+                if (nextArg) {
+                    parsed.costUntil = nextArg;
+                    i++;
+                }
+                break;
+            case '--cost-project':
+                if (nextArg) {
+                    parsed.costProject = nextArg;
+                    i++;
+                }
+                break;
+            case '--cost-mode':
+                if (nextArg && ['auto', 'calculate', 'display'].includes(nextArg)) {
+                    parsed.costMode = nextArg as ParsedArgs['costMode'];
+                    i++;
+                }
+                break;
+            case '--cost-timezone':
+                if (nextArg) {
+                    parsed.costTimezone = nextArg;
+                    i++;
+                }
+                break;
+            case '--cost-locale':
+                if (nextArg) {
+                    parsed.costLocale = nextArg;
+                    i++;
+                }
+                break;
+            case '--cost-order':
+                if (nextArg && ['asc', 'desc'].includes(nextArg)) {
+                    parsed.costOrder = nextArg as ParsedArgs['costOrder'];
+                    i++;
+                }
+                break;
+            case '--cost-breakdown':
+                parsed.costBreakdown = true;
+                break;
+            case '--no-cost-breakdown':
+                parsed.costBreakdown = false;
+                break;
+            case '--cost-instances':
+                parsed.costInstances = true;
+                break;
         }
     }
 
     return parsed;
+}
+
+function isValidUsageGrouping(value: string): value is UsageGrouping {
+    return ['daily', 'weekly', 'monthly', 'session', 'blocks'].includes(value);
 }
 
 function getVersion(): string {
@@ -121,6 +205,17 @@ Options:
   -p, --project <path>      Export conversations for specific project
   -m, --metadata            Include conversation metrics
   -t, --tui                 Launch interactive Terminal UI (default behavior)
+  --cost-report <file>      Generate cost analysis JSON via ccusage (requires ccusage CLI)
+      --cost-group <mode>   Grouping for analysis: daily, weekly, monthly, session, blocks (default: daily)
+      --cost-since <yyyymmdd>  Filter start date passed to ccusage
+      --cost-until <yyyymmdd>  Filter end date passed to ccusage
+      --cost-project <name> Filter ccusage data to a project/instance name
+      --cost-mode <mode>    ccusage cost mode: auto | calculate | display
+      --cost-timezone <tz>  Timezone for ccusage aggregation (e.g., America/Los_Angeles)
+      --cost-order <dir>    Sort order for ccusage output: asc | desc (default: asc)
+      --cost-breakdown      Force per-model breakdown (default behavior)
+      --no-cost-breakdown   Disable ccusage breakdown flag
+      --cost-instances      Include ccusage --instances breakdown per project
   -v, --version             Show version number
   -h, --help                Show this help message
 
@@ -146,6 +241,11 @@ async function main(): Promise<void> {
 
         if (args.version) {
             showVersion();
+            return;
+        }
+
+        if (args.costReport) {
+            await generateCostAnalysis(args);
             return;
         }
 
@@ -258,6 +358,50 @@ async function main(): Promise<void> {
         console.error('💥 Unexpected error:', error instanceof Error ? error.message : error);
         console.log('🐛 If this error persists, please report it at:');
         console.log('   https://github.com/your-repo/show-me-the-talk/issues');
+        process.exit(1);
+    }
+}
+
+async function generateCostAnalysis(args: ParsedArgs): Promise<void> {
+    if (!args.costReport) {
+        throw new Error('Cost analysis requires --cost-report <file>.');
+    }
+
+    const grouping = args.costGroup ?? 'daily';
+    console.log(`📊 Generating ${grouping} cost analysis via ccusage...`);
+
+    try {
+        const costService = new CostAnalysisApplicationService();
+        const { report, outputPath, command } = await costService.generateReport({
+            grouping,
+            outputPath: args.costReport,
+            since: args.costSince,
+            until: args.costUntil,
+            project: args.costProject,
+            mode: args.costMode,
+            timezone: args.costTimezone,
+            locale: args.costLocale,
+            order: args.costOrder ?? 'asc',
+            includeBreakdown: args.costBreakdown ?? true,
+            includeInstances: args.costInstances ?? false
+        });
+
+        console.log(`✅ Cost analysis saved to: ${outputPath}`);
+        console.log(`   Command: ${command.join(' ')}`);
+        console.log(`   Total cost: $${report.totals.costUSD.toFixed(4)}`);
+        console.log(`   Entries analyzed: ${report.totals.entryCount}`);
+        if (report.modelUsage.length) {
+            const topModel = report.modelUsage[0];
+            console.log(`   Top model: ${topModel.model} (${(topModel.shareOfCost * 100).toFixed(1)}% of spend)`);
+        }
+    } catch (error) {
+        console.error('❌ Failed to generate cost analysis.');
+        if (error instanceof Error) {
+            console.error(error.message);
+        } else {
+            console.error(error);
+        }
+        console.error('💡 Make sure the ccusage CLI is installed and accessible in your PATH.');
         process.exit(1);
     }
 }

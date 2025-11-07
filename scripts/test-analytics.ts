@@ -10,6 +10,7 @@ import { UserMessage, AssistantMessage } from '../src/domain/models/Message.js';
 import { AnalyticsService } from '../src/domain/services/analytics/AnalyticsService.js';
 import { PrivacySettings, PrivacyLevel } from '../src/domain/models/analytics/index.js';
 import { AnalyticsDashboardTemplate } from '../src/infrastructure/rendering/analytics/index.js';
+import type { UsageReport as UsageCostReport } from '../src/domain/models/usage/UsageReport.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -266,7 +267,20 @@ async function main() {
             enableSocialSharing: false
         });
 
-        const html = dashboard.render(report);
+        let usageReport: UsageCostReport | undefined;
+        const usageReportPath = path.join(process.cwd(), 'ccusage-report.json');
+        if (fs.existsSync(usageReportPath)) {
+            try {
+                usageReport = JSON.parse(fs.readFileSync(usageReportPath, 'utf-8')) as UsageCostReport;
+                console.log('   ✓ Attached ccusage-report.json for cost section\n');
+            } catch (error) {
+                console.log('   ⚠️ Failed to parse ccusage-report.json, skipping cost section');
+            }
+        } else {
+            console.log('   ℹ️ No ccusage-report.json found — run `ccshow --cost-report` to unlock the cost pulse section.\n');
+        }
+
+        const html = dashboard.render(report, usageReport);
 
         // Save to file
         const outputPath = path.join(process.cwd(), 'test-analytics-report.html');

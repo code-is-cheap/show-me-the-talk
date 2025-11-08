@@ -72,3 +72,6 @@ backup/
 # Test output files
 test-*.html
 *-report.html
+
+# Analytics reports
+ccusage-report.json

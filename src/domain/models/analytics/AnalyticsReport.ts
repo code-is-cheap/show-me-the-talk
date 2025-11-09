@@ -5,6 +5,7 @@ import { HeatmapData } from '../../services/analytics/ConversationHeatmapService
 import { AchievementResult } from '../../services/analytics/AchievementService.js';
 import { DeveloperPersona } from '../../services/analytics/DeveloperPersonaService.js';
 import { StoryCard } from '../../services/analytics/WrappedStoryService.js';
+import { HourlyActivitySummary } from '../../services/analytics/HourlyActivityAnalyzer.js';
 
 /**
  * Timeline data point for evolution analysis
@@ -97,7 +98,8 @@ export class AnalyticsReport {
         public readonly achievements?: AchievementResult,
         public readonly persona?: DeveloperPersona,
         public readonly wrappedStory?: StoryCard[],
-        public readonly sentencePatterns?: SentenceAnalysisSummary
+        public readonly sentencePatterns?: SentenceAnalysisSummary,
+        public readonly hourlyActivity?: HourlyActivitySummary
     ) {}
 
     /**

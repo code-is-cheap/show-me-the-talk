@@ -106,6 +106,21 @@ When a `ccusage-report.json` file lives alongside your export, the advanced HTML
 
 > If you skip step 1 the dashboard simply hides the Usage Cost Pulse block, so you never have half-baked charts or confusing empty states.
 
+### Hourly Momentum from `~/.claude`
+
+Social-engineering style growth analysis now inspects the raw Claude activity streams (`history.jsonl`, per-project logs, and your exported conversations) to surface *when* you learn, ship, and share during a 24-hour cycle.
+
+```bash
+npx tsx scripts/analyze-hourly-activity.ts \
+  --claude-dir ~/.claude \
+  --lookback 120
+# or simply npm run analyze:hourly
+```
+
+- **Automatic ingestion** – the HTML dashboard and persona scoring engine automatically ingest the resulting hourly dataset whenever you launch the TUI or export analytics from the same machine that owns `~/.claude`.
+- **Standalone probe** – run the script above to sanity-check the buckets, share-of-night vs. dawn, or simply dump the JSON payload into other tools.
+- **Recommendations** – the dashboard’s new *Hourly Momentum* section pairs 24-hour bar charts, a 7×24 heatmap, and tailored coaching tips (night-owl warnings, weekend warrior callouts, weekday broadcast slots) so you can time your shareable updates like a growth hacker.
+
 ## 🛠️ Usage
 
 ### CLI Options

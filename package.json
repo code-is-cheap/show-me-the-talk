@@ -26,6 +26,7 @@
     "format": "prettier --write src/**/*.ts",
     "typecheck": "tsc --noEmit",
     "benchmark": "tsx scripts/benchmark.ts",
+    "analyze:hourly": "tsx scripts/analyze-hourly-activity.ts",
     "docs": "typedoc src/index.ts",
     "prepare": "husky install",
     "prepublishOnly": "npm run build"

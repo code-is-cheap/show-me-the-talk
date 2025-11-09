@@ -57,7 +57,8 @@ const report = new AnalyticsReport(
   undefined,
   undefined,
   undefined,
-  sentencePatterns
+  sentencePatterns,
+  undefined
 );
 
 describe('AnalyticsDashboardTemplate sentence section', () => {
@@ -70,5 +71,58 @@ describe('AnalyticsDashboardTemplate sentence section', () => {
     expect(html).toContain('intent-pill');
     expect(html).toContain('sentence-table');
     expect(html).toContain('deployment');
+  });
+
+  it('renders hourly momentum section when hourly data is attached', () => {
+    const hourlyReport = new AnalyticsReport(
+      baseWordCloud,
+      emptyCluster,
+      emptyCluster,
+      emptyCluster,
+      [],
+      stats,
+      [],
+      PrivacySettings.forLevel(PrivacyLevel.TRANSPARENT),
+      new Date('2025-01-05T00:00:00Z'),
+      'test-version',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      sentencePatterns,
+      {
+        timezone: 'America/Los_Angeles',
+        totalEvents: 42,
+        buckets: Array.from({ length: 24 }, (_, hour) => ({
+          hour,
+          count: hour === 14 ? 6 : 1,
+          label: `${hour}:00`
+        })),
+        weekdayMatrix: Array.from({ length: 7 }, () => Array(24).fill(0)),
+        peakHour: { hour: 14, count: 6, label: '2 PM' },
+        quietHour: { hour: 3, count: 0, label: '3 AM' },
+        focusWindow: { startHour: 13, endHour: 16, spanHours: 3, averageCount: 4, label: '1 PM – 4 PM' },
+        nightShare: 0.1,
+        earlyShare: 0.2,
+        weekendShare: 0.15,
+        dominantDay: { dayIndex: 2, label: 'Wed', count: 20 },
+        recommendations: [
+          { icon: '🎯', title: 'Test Rec', description: 'Keep momentum high.', tone: 'positive' }
+        ],
+        samples: [
+          { timestamp: new Date('2025-01-05T10:00:00Z'), source: 'history', label: 'Sample', project: 'demo' }
+        ],
+        sourceBreakdown: { history: 30, conversation: 12 },
+        trendStatement: 'Peak hits around 2 PM on Wednesdays.'
+      }
+    );
+
+    const template = new AnalyticsDashboardTemplate();
+    const html = template.render(hourlyReport);
+
+    expect(html).toContain('Hourly Momentum');
+    expect(html).toContain('Peak Hour');
+    expect(html).toContain('24-Hour Pulse');
+    expect(html).toContain('Weekpart Heatmap');
   });
 });

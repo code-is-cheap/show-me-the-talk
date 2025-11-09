@@ -21,6 +21,12 @@ import { DeveloperPersonaService } from './DeveloperPersonaService.js';
 import { WrappedStoryService } from './WrappedStoryService.js';
 import { SentencePatternAnalyzer } from './SentencePatternAnalyzer.js';
 import { LlmSentenceInsightService } from './LlmSentenceInsightService.js';
+import { HourlyActivityAnalyzer, HourlyActivityOptions } from './HourlyActivityAnalyzer.js';
+
+export interface AnalyticsServiceOptions {
+    claudeDir?: string;
+    hourlyActivity?: HourlyActivityOptions;
+}
 
 /**
  * Unified service for conversation analytics
@@ -37,8 +43,9 @@ export class AnalyticsService {
     private wrappedService: WrappedStoryService;
     private sentenceAnalyzer: SentencePatternAnalyzer;
     private llmSentenceInsights: LlmSentenceInsightService;
+    private hourlyActivityAnalyzer: HourlyActivityAnalyzer;
 
-    constructor() {
+    constructor(options: AnalyticsServiceOptions = {}) {
         this.textAnalyzer = new ConversationTextAnalyzer();
         this.frequencyAnalyzer = new WordFrequencyAnalyzer(this.textAnalyzer);
         this.conceptExtractor = new SemanticConceptExtractor(this.textAnalyzer);
@@ -50,6 +57,12 @@ export class AnalyticsService {
         this.wrappedService = new WrappedStoryService();
         this.sentenceAnalyzer = new SentencePatternAnalyzer();
         this.llmSentenceInsights = new LlmSentenceInsightService();
+        this.hourlyActivityAnalyzer = new HourlyActivityAnalyzer({
+            claudeDir: options.claudeDir ?? options.hourlyActivity?.claudeDir,
+            lookbackDays: options.hourlyActivity?.lookbackDays,
+            maxHistoryRecords: options.hourlyActivity?.maxHistoryRecords,
+            timezone: options.hourlyActivity?.timezone
+        });
     }
 
     /**
@@ -75,6 +88,9 @@ export class AnalyticsService {
 
         // Calculate statistics
         const statistics = this.calculateStatistics(filteredConversations);
+
+        // Hourly analysis (history.jsonl + conversations)
+        const hourlyActivity = await this.hourlyActivityAnalyzer.analyze(filteredConversations);
 
         // Generate insights
         const insights = this.generateInsights(
@@ -111,7 +127,8 @@ export class AnalyticsService {
             undefined,
             undefined,
             undefined,
-            sentencePatterns
+            sentencePatterns,
+            hourlyActivity
         );
 
         // Check achievements
@@ -144,7 +161,8 @@ export class AnalyticsService {
             achievements,
             persona,
             undefined,
-            sentencePatterns
+            sentencePatterns,
+            hourlyActivity
         );
 
         // Generate Wrapped story cards
@@ -166,7 +184,8 @@ export class AnalyticsService {
             achievements,
             persona,
             wrappedStory,
-            sentencePatterns
+            sentencePatterns,
+            hourlyActivity
         );
     }
 

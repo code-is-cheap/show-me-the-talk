@@ -4,6 +4,8 @@ import { SemanticCluster } from '../../../domain/models/analytics/SemanticCluste
 import { HeatmapData } from '../../../domain/services/analytics/ConversationHeatmapService.js';
 import { UsageReport as UsageCostReport } from '../../../domain/models/usage/UsageReport.js';
 
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
 /**
  * Dashboard theme options
  */
@@ -111,6 +113,7 @@ export class AnalyticsDashboardTemplate {
             </summary>
             <div class="analytics-details-content">
                 ${this.generateOverviewSection(report)}
+                ${this.generateHourlyActivitySection(report)}
                 ${this.generateUsageCostSection(usageReport)}
                 ${this.generateSentencePatternSection(report)}
                 ${this.options.includeTechStack ? this.generateTechStackSection(report) : ''}
@@ -781,6 +784,197 @@ export class AnalyticsDashboardTemplate {
 
         .chart-canvas {
             max-height: 100%;
+        }
+
+        .chart-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            padding: var(--space-4);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+        }
+
+        .chart-card.hourly-chart {
+            min-height: 0;
+        }
+
+        .chart-card.hourly-chart .chart-canvas {
+            width: 100%;
+            height: 260px;
+            max-height: 260px;
+        }
+
+        .chart-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
+        }
+
+        .chart-card-header h3 {
+            margin: 0;
+            font-size: var(--text-lg);
+            color: var(--text-primary);
+        }
+
+        .hourly-activity-section {
+            margin-top: var(--space-8);
+        }
+
+        .hourly-hero-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: var(--space-4);
+            margin-bottom: var(--space-5);
+        }
+
+        .hourly-hero-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            padding: var(--space-4);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+        }
+
+        .hero-label {
+            font-size: var(--text-xs);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-tertiary);
+        }
+
+        .hero-value {
+            font-size: var(--text-2xl);
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .hero-subvalue {
+            font-size: var(--text-sm);
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-left: var(--space-2);
+        }
+
+        .hero-meta {
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
+        }
+
+        .hourly-charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: var(--space-4);
+        }
+
+        .weekday-heatmap-grid {
+            display: grid;
+            grid-template-columns: auto repeat(24, minmax(10px, 1fr));
+            gap: 2px;
+            font-size: var(--text-xs);
+        }
+
+        .weekday-heatmap-hour {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            font-size: 0.55rem;
+            color: var(--text-tertiary);
+            text-align: center;
+        }
+
+        .weekday-label {
+            font-weight: 600;
+            font-size: var(--text-xs);
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding-right: var(--space-2);
+        }
+
+        .weekday-cell {
+            width: 100%;
+            height: 18px;
+            border-radius: 2px;
+            background: var(--bg-surface);
+            position: relative;
+        }
+
+        .weekday-cell[data-count="0"] {
+            background: var(--bg-surface);
+            border: 1px dashed var(--border);
+        }
+
+        .weekday-cell::after {
+            content: attr(data-count);
+            position: absolute;
+            inset: 0;
+            font-size: 0.5rem;
+            color: var(--text-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .weekday-cell:hover::after {
+            opacity: 1;
+        }
+
+        .weekday-heatmap-fallback[hidden] {
+            display: none;
+        }
+
+        .weekday-heatmap-fallback {
+            margin-top: var(--space-3);
+        }
+
+        .hourly-rec-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+        }
+
+        .hourly-rec {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: var(--space-3);
+            padding: var(--space-3);
+            border-left: 3px solid var(--border);
+            background: var(--bg-surface);
+        }
+
+        .hourly-rec.warning {
+            border-left-color: var(--color-warning);
+        }
+
+        .hourly-rec.positive {
+            border-left-color: var(--color-success);
+        }
+
+        .hourly-rec.neutral {
+            border-left-color: var(--color-primary);
+        }
+
+        .rec-icon {
+            font-size: 1.5rem;
+        }
+
+        .rec-title {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .rec-description {
+            font-size: var(--text-sm);
+            color: var(--text-secondary);
         }
 
         /* Insights - Left Bar Style */
@@ -2070,6 +2264,126 @@ export class AnalyticsDashboardTemplate {
     </section>`;
     }
 
+    private generateHourlyActivitySection(report: AnalyticsReport): string {
+        const header = `<div class="section-header">
+            <i class="fas fa-clock"></i>
+            <h2>Hourly Momentum</h2>
+            <span class="section-subtitle">Time zone: ${this.escapeHtml(report.hourlyActivity?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'Local')}</span>
+        </div>`;
+
+        if (!report.hourlyActivity) {
+            return `<section class="section hourly-activity-section" id="hourly-activity">
+                ${header}
+                ${this.renderEmptyState('🕒', 'Calibrating hourly insights', 'Run the dashboard against a Claude profile on this machine so we can read ~/.claude/history.jsonl and reconstruct your daily cadence.')}
+            </section>`;
+        }
+
+        const data = report.hourlyActivity;
+        const peakLabel = data.peakHour ? data.peakHour.label : 'Calibrating';
+        const peakMeta = data.dominantDay ? `${data.dominantDay.label} spikes` : data.trendStatement;
+        const focusLabel = data.focusWindow?.label ?? 'Collecting data';
+        const focusMeta = data.focusWindow ? `${this.formatCompactNumber(data.focusWindow.averageCount)} avg check-ins` : 'Need more sessions';
+        const nightShare = this.formatPercentage(data.nightShare * 100);
+        const earlyShare = this.formatPercentage(data.earlyShare * 100);
+        const weekendShare = this.formatPercentage(data.weekendShare * 100);
+        const historyCount = data.sourceBreakdown.history ?? 0;
+        const conversationCount = data.sourceBreakdown.conversation ?? 0;
+        const historyShare = data.totalEvents ? this.formatPercentage((historyCount / data.totalEvents) * 100) : '0%';
+        const conversationShare = data.totalEvents ? this.formatPercentage((conversationCount / data.totalEvents) * 100) : '0%';
+
+        const recommendationsHtml = data.recommendations
+            .map(rec => `<li class="hourly-rec ${this.escapeHtml(rec.tone)}">
+                    <div class="rec-icon">${this.escapeHtml(rec.icon)}</div>
+                    <div>
+                        <div class="rec-title">${this.escapeHtml(rec.title)}</div>
+                        <div class="rec-description">${this.escapeHtml(rec.description)}</div>
+                    </div>
+                </li>`)
+            .join('');
+
+        const heatmapGrid = this.renderWeekpartHeatmap(data);
+
+        return `<section class="section hourly-activity-section" id="hourly-activity">
+            ${header}
+            <div class="hourly-hero-grid">
+                <div class="hourly-hero-card">
+                    <div class="hero-label">Peak Hour</div>
+                    <div class="hero-value">${this.escapeHtml(peakLabel)}</div>
+                    <div class="hero-meta">${this.escapeHtml(peakMeta)}</div>
+                </div>
+                <div class="hourly-hero-card">
+                    <div class="hero-label">Focus Window</div>
+                    <div class="hero-value">${this.escapeHtml(focusLabel)}</div>
+                    <div class="hero-meta">${this.escapeHtml(focusMeta)}</div>
+                </div>
+                <div class="hourly-hero-card">
+                    <div class="hero-label">Night vs Dawn</div>
+                    <div class="hero-value">${this.escapeHtml(nightShare)} <span class="hero-subvalue">night</span></div>
+                    <div class="hero-meta">Sunrise: ${this.escapeHtml(earlyShare)}</div>
+                </div>
+                <div class="hourly-hero-card">
+                    <div class="hero-label">Weekend Energy</div>
+                    <div class="hero-value">${this.escapeHtml(weekendShare)}</div>
+                    <div class="hero-meta">History: ${this.escapeHtml(historyShare)} · Conversations: ${this.escapeHtml(conversationShare)}</div>
+                </div>
+            </div>
+            <div class="hourly-charts-grid">
+                <div class="chart-card hourly-chart">
+                    <div class="chart-card-header">
+                        <h3>24-Hour Pulse</h3>
+                        <span>${this.escapeHtml(data.totalEvents ? `${this.formatCompactNumber(data.totalEvents)} touchpoints` : 'Recording')}</span>
+                    </div>
+                    <canvas id="hourlyActivityChart" class="chart-canvas" aria-label="Bar chart of hourly activity" height="260"></canvas>
+                </div>
+                <div class="chart-card hourly-chart">
+                    <div class="chart-card-header">
+                        <h3>Weekpart Heatmap</h3>
+                        <span>${this.escapeHtml(data.trendStatement)}</span>
+                    </div>
+                    <canvas id="weekdayHeatmapChart" class="chart-canvas" aria-label="Heatmap of weekday-hour combinations" height="260"></canvas>
+                    <div id="weekdayHeatmapFallback" class="weekday-heatmap-fallback" hidden>
+                        ${heatmapGrid}
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-card-header">
+                        <h3>Playbook</h3>
+                        <span>Social engineering cues</span>
+                    </div>
+                    <ul class="hourly-rec-list">
+                        ${recommendationsHtml}
+                    </ul>
+                </div>
+            </div>
+        </section>`;
+    }
+
+    private renderWeekpartHeatmap(data: NonNullable<AnalyticsReport['hourlyActivity']>): string {
+        const rows = data.weekdayMatrix ?? [];
+        const maxValue = Math.max(...rows.flat(), 0);
+        const hourLabels = data.buckets.map(bucket => bucket.label);
+        const headerRow = ['<div></div>'].concat(hourLabels.map(label =>
+            `<div class="weekday-heatmap-hour" aria-hidden="true">${this.escapeHtml(label)}</div>`
+        )).join('');
+
+        const bodyRows = rows.map((row, dayIndex) => {
+            const cells = row.map((value, hour) => {
+                const intensity = maxValue === 0 ? 0 : value / maxValue;
+                const background = intensity === 0
+                    ? ''
+                    : `background: rgba(0, 112, 243, ${(0.1 + intensity * 0.75).toFixed(2)});`;
+                const title = `${WEEKDAY_LABELS[dayIndex]} · ${hourLabels[hour] ?? hour}: ${value} check-ins`;
+                return `<div class="weekday-cell" data-count="${value}" style="${background}" title="${this.escapeHtml(title)}"></div>`;
+            }).join('');
+            return `<div class="weekday-label">${this.escapeHtml(WEEKDAY_LABELS[dayIndex])}</div>${cells}`;
+        }).join('');
+
+        return `<div class="weekday-heatmap-grid" role="grid" aria-label="Weekpart activity heatmap">
+            ${headerRow}
+            ${bodyRows}
+        </div>`;
+    }
+
     private generateUsageCostSection(usageReport?: UsageCostReport): string {
         const header = `<div class="section-header">
             <i class="fas fa-coins"></i>
@@ -3152,6 +3466,24 @@ export class AnalyticsDashboardTemplate {
         return `window.costTrendData = ${JSON.stringify(dataset)};`;
     }
 
+    private generateHourlyActivityPayload(report: AnalyticsReport): string {
+        if (!report.hourlyActivity) {
+            return 'window.hourlyActivityData = null;';
+        }
+
+        const normalized = {
+            ...report.hourlyActivity,
+            samples: report.hourlyActivity.samples.map(sample => ({
+                ...sample,
+                timestamp: sample.timestamp instanceof Date
+                    ? sample.timestamp.toISOString()
+                    : sample.timestamp
+            }))
+        };
+
+        return `window.hourlyActivityData = ${JSON.stringify(normalized)};`;
+    }
+
     private getUsageTrendDataset(usageReport: UsageCostReport): { labels: string[]; values: number[]; median: number; percentile90: number; } {
         const limit = Math.min(usageReport.entries.length, 90);
         const entries = usageReport.entries.slice(-limit);
@@ -3168,7 +3500,9 @@ export class AnalyticsDashboardTemplate {
      */
     private generateScripts(report: AnalyticsReport, usageReport?: UsageCostReport): string {
         const usagePayload = this.generateUsageScriptPayload(usageReport);
+        const hourlyPayload = this.generateHourlyActivityPayload(report);
         return `<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@1.4.0/dist/chartjs-chart-matrix.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3-cloud@1.2.7/build/d3.layout.cloud.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
@@ -3179,7 +3513,11 @@ export class AnalyticsDashboardTemplate {
     <script>
         let calHeatmapInstance;
         let costTrendChartInstance;
+        let hourlyActivityChartInstance;
+        let hourlyHeatmapChartInstance;
+        const WEEKDAY_LABELS = ${JSON.stringify(WEEKDAY_LABELS)};
         ${usagePayload}
+        ${hourlyPayload}
 
         // Theme management
         function toggleTheme() {
@@ -3198,6 +3536,7 @@ export class AnalyticsDashboardTemplate {
             }
 
             setTimeout(initHeatmap, 0);
+            setTimeout(initHourlyActivityCharts, 0);
         }
 
         // Initialize theme
@@ -3411,6 +3750,174 @@ export class AnalyticsDashboardTemplate {
                     }
                 }
             });
+        }
+
+        function registerMatrixPlugin() {
+            if (typeof Chart === 'undefined') {
+                return false;
+            }
+            const globalMatrix = window.ChartMatrix || window['chartjs-chart-matrix'] || window.ChartjsChartMatrix;
+            if (!globalMatrix) {
+                return false;
+            }
+            const { MatrixController, MatrixElement, ColorScale, SizeScale } = globalMatrix;
+            const alreadyRegistered = Chart.registry.getController && Chart.registry.getController('matrix');
+            if (!alreadyRegistered) {
+                if (MatrixController && MatrixElement) {
+                    Chart.register(MatrixController, MatrixElement);
+                } else {
+                    return false;
+                }
+                if (ColorScale) Chart.register(ColorScale);
+                if (SizeScale) Chart.register(SizeScale);
+            }
+            return true;
+        }
+
+        function initHourlyActivityCharts() {
+            if (!window.hourlyActivityData) return;
+
+            const dataset = window.hourlyActivityData;
+            const labels = dataset.buckets.map(bucket => bucket.label);
+            const values = dataset.buckets.map(bucket => bucket.count);
+            const highlightHour = dataset.peakHour?.hour ?? -1;
+            const maxValue = Math.max(...values, 1);
+
+            const hourlyCtx = document.getElementById('hourlyActivityChart');
+            if (hourlyCtx) {
+                if (hourlyActivityChartInstance) {
+                    hourlyActivityChartInstance.destroy();
+                }
+
+                hourlyActivityChartInstance = new Chart(hourlyCtx, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'Touchpoints',
+                            data: values,
+                            backgroundColor: dataset.buckets.map(bucket => {
+                                if (bucket.hour === highlightHour) {
+                                    return 'rgba(0, 112, 243, 0.9)';
+                                }
+                                const intensity = bucket.count / maxValue;
+                                return \`rgba(0, 112, 243, \${0.2 + intensity * 0.5})\`;
+                            }),
+                            borderRadius: 6,
+                            borderSkipped: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: context => \`\${context.raw} check-ins\`
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: { precision: 0 },
+                                grid: { color: 'rgba(0, 0, 0, 0.08)' }
+                            },
+                            x: {
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+            }
+
+            const heatmapCtx = document.getElementById('weekdayHeatmapChart');
+            const fallbackEl = document.getElementById('weekdayHeatmapFallback');
+            const pluginReady = registerMatrixPlugin();
+
+            if (heatmapCtx && pluginReady) {
+                if (hourlyHeatmapChartInstance) {
+                    hourlyHeatmapChartInstance.destroy();
+                }
+
+                const matrixData = [];
+                dataset.weekdayMatrix.forEach((row, dayIndex) => {
+                    row.forEach((value, hour) => {
+                        matrixData.push({ x: hour, y: dayIndex, v: value });
+                    });
+                });
+                const maxHeatValue = Math.max(...matrixData.map(cell => cell.v), 1);
+
+                hourlyHeatmapChartInstance = new Chart(heatmapCtx, {
+                    type: 'matrix',
+                    data: {
+                        datasets: [{
+                            label: 'Hourly cadence',
+                            data: matrixData,
+                            backgroundColor(ctx) {
+                                const value = ctx.raw.v;
+                                const alpha = value === 0 ? 0 : 0.15 + (value / maxHeatValue) * 0.75;
+                                return \`rgba(0, 112, 243, \${alpha})\`;
+                            },
+                            borderWidth: 0,
+                            width(ctx) {
+                                const area = ctx.chart.chartArea;
+                                if (!area) return 0;
+                                return (area.right - area.left) / 24 - 2;
+                            },
+                            height(ctx) {
+                                const area = ctx.chart.chartArea;
+                                if (!area) return 0;
+                                return (area.bottom - area.top) / 7 - 4;
+                            }
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    title(items) {
+                                        const entry = items[0].raw;
+                                        return \`\${WEEKDAY_LABELS[entry.y]} · \${labels[entry.x]}\`;
+                                    },
+                                    label(items) {
+                                        return \`\${items.raw.v} check-ins\`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'linear',
+                                position: 'top',
+                                ticks: {
+                                    callback: value => labels[Math.round(value)] || value
+                                },
+                                grid: { display: false },
+                                offset: false
+                            },
+                            y: {
+                                type: 'linear',
+                                reverse: true,
+                                ticks: {
+                                    callback: value => WEEKDAY_LABELS[Math.round(value)] || value
+                                },
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+
+                if (fallbackEl) {
+                    fallbackEl.setAttribute('hidden', 'true');
+                }
+            } else if (fallbackEl) {
+                fallbackEl.removeAttribute('hidden');
+            }
         }
 
         // Initialize Task Distribution Chart
@@ -3629,10 +4136,14 @@ export class AnalyticsDashboardTemplate {
         // Initialize Word Cloud
         function initWordCloud() {
             if (!window.wordCloudData || window.wordCloudData.length === 0) return;
-            if (typeof d3 === 'undefined' || !d3.layout || typeof d3.layout.cloud !== 'function') {
+            const d3Global = (typeof window !== 'undefined' && window.d3)
+                ? window.d3
+                : (typeof d3 !== 'undefined' ? d3 : undefined);
+            if (!d3Global || typeof d3Global.select !== 'function' || !d3Global.layout || typeof d3Global.layout.cloud !== 'function') {
                 console.warn('d3-cloud library not available');
                 return;
             }
+            const d3Instance = d3Global;
 
             const svgElement = document.getElementById('wordCloudSvg');
             if (!svgElement) return;
@@ -3640,7 +4151,7 @@ export class AnalyticsDashboardTemplate {
             const width = svgElement.clientWidth || svgElement.parentElement?.offsetWidth || 960;
             const height = 360;
 
-            const svg = d3.select(svgElement);
+            const svg = d3Instance.select(svgElement);
             svg.selectAll('*').remove();
             svg.attr('width', width).attr('height', height);
 
@@ -3655,7 +4166,7 @@ export class AnalyticsDashboardTemplate {
             const minWeight = Math.min(...weights);
             const maxWeight = Math.max(...weights);
 
-            d3.layout.cloud()
+            d3Instance.layout.cloud()
                 .size([width, height])
                 .words(entries)
                 .padding(4)
@@ -3945,6 +4456,7 @@ export class AnalyticsDashboardTemplate {
             initTimelineChart();
             initWordCloud();
             initCostTrendChart();
+            initHourlyActivityCharts();
 
             // Set initial theme button state for word cloud
             changeWordCloudTheme('tableau10');
@@ -3954,6 +4466,7 @@ export class AnalyticsDashboardTemplate {
         window.addEventListener('resize', () => {
             setTimeout(initWordCloud, 100);
             setTimeout(initCostTrendChart, 200);
+            setTimeout(initHourlyActivityCharts, 150);
         });
     </script>`;
     }

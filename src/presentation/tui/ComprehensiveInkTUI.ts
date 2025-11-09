@@ -17,7 +17,7 @@ export class ComprehensiveInkTUI {
 
     constructor(conversationService: ConversationApplicationService, options: TUIConfig = { claudeDir: '', debug: false }) {
         this.conversationService = conversationService;
-        this.analyticsService = new AnalyticsService();
+        this.analyticsService = new AnalyticsService({ claudeDir: options.claudeDir });
         this.options = options;
     }
 

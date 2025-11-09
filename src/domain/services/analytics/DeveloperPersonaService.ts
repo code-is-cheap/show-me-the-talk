@@ -71,7 +71,7 @@ export class DeveloperPersonaService {
         report: AnalyticsReport,
         heatmap: HeatmapData
     ): DeveloperPersona {
-        const activityPattern = this.analyzeActivityPattern(conversations, heatmap);
+        const activityPattern = this.analyzeActivityPattern(conversations, heatmap, report);
         const learningPattern = this.analyzeLearningPattern(conversations, report);
 
         // Score all personas
@@ -90,10 +90,14 @@ export class DeveloperPersonaService {
      */
     private analyzeActivityPattern(
         conversations: Conversation[],
-        heatmap: HeatmapData
+        heatmap: HeatmapData,
+        report: AnalyticsReport
     ): ActivityPattern {
-        // Calculate peak hour (mock - would need message timestamps in real implementation)
-        const peakHour = 14; // Default to 2 PM
+        const hourly = report.hourlyActivity;
+        const peakHour =
+            hourly?.peakHour?.hour
+            ?? report.statistics.mostActiveHour?.hour
+            ?? 14;
 
         // Peak day of week from heatmap
         const peakDayOfWeek = heatmap.stats.mostProductiveDayOfWeek;
@@ -101,11 +105,11 @@ export class DeveloperPersonaService {
         // Weekend ratio (Sat=6, Sun=7)
         const weekendCells = heatmap.cells.filter(c => c.dayOfWeek >= 6 && c.count > 0);
         const weekdayCells = heatmap.cells.filter(c => c.dayOfWeek < 6 && c.count > 0);
-        const weekendRatio = weekendCells.length / (weekendCells.length + weekdayCells.length || 1);
+        const fallbackRatio = weekendCells.length / ((weekendCells.length + weekdayCells.length) || 1);
+        const weekendRatio = hourly?.weekendShare ?? fallbackRatio;
 
-        // Time patterns (simplified - would need actual timestamps)
-        const nightPercentage = 0.2; // Mock
-        const earlyPercentage = 0.1; // Mock
+        const nightPercentage = hourly?.nightShare ?? 0.2;
+        const earlyPercentage = hourly?.earlyShare ?? 0.1;
 
         return {
             peakHour,

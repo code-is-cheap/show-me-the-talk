@@ -2,7 +2,7 @@ import { ConversationRepository } from '../../domain/repositories/ConversationRe
 import { ConversationService, ConversationMetrics } from '../../domain/services/ConversationService.js';
 import { ProjectContext } from '../../domain/models/ProjectContext.js';
 import { ConversationFilter, FilterCriteria, ConversationScore, ConversationCategory } from '../../domain/services/ConversationFilter.js';
-import { ExportRequest, ExportResult, ConversationDto, MessageDto } from '../dto/ExportDto.js';
+import { ExportRequest, ExportResult, ConversationDto, MessageDto, RawEntryDto } from '../dto/ExportDto.js';
 import { ExportRepository } from '../../domain/repositories/ExportRepository.js';
 import { Conversation } from '../../domain/models/Conversation.js';
 import { Message } from '../../domain/models/Message.js';
@@ -52,12 +52,13 @@ export class ConversationApplicationService {
             const exportData = {
                 exportDate: new Date().toISOString(),
                 exportTimestamp: new Date(),
-                conversations: conversations.map(conversation => this.mapToDto(conversation)),
+                conversations: conversations.map(conversation => this.mapToDto(conversation, { includeRaw: request.includeRaw })),
                 projects: [], // Add projects data if needed
                 totalConversations: conversations.length,
                 totalMessages: conversations.reduce((sum, conv) => sum + conv.getMessageCount(), 0),
                 totalProjects: 1, // Assuming single project for now
                 includeMetadata: request.includeMetadata || false,
+                includeRaw: request.includeRaw || false,
                 metrics: request.includeMetadata ? ConversationService.calculateConversationMetrics(conversations) : undefined
             };
 
@@ -159,12 +160,13 @@ export class ConversationApplicationService {
             const exportData = {
                 exportDate: new Date().toISOString(),
                 exportTimestamp: new Date(),
-                conversations: conversations.map(conversation => this.mapToDto(conversation)),
+                conversations: conversations.map(conversation => this.mapToDto(conversation, { includeRaw: request.includeRaw })),
                 projects: [], // Add projects data if needed
                 totalConversations: conversations.length,
                 totalMessages: conversations.reduce((sum, conv) => sum + conv.getMessageCount(), 0),
                 totalProjects: 1, // Assuming single project for now
                 includeMetadata: request.includeMetadata || false,
+                includeRaw: request.includeRaw || false,
                 metrics: request.includeMetadata ? ConversationService.calculateConversationMetrics(conversations) : undefined
             };
 
@@ -185,8 +187,8 @@ export class ConversationApplicationService {
         }
     }
 
-    private mapToDto = (conversation: Conversation): ConversationDto => {
-        return {
+    private mapToDto = (conversation: Conversation, options: { includeRaw?: boolean } = {}): ConversationDto => {
+        const dto: ConversationDto = {
             sessionId: conversation.sessionId,
             projectPath: conversation.getProjectContext().getOriginalPath(),
             startTime: conversation.getStartTime().toISOString(),
@@ -202,6 +204,19 @@ export class ConversationApplicationService {
                 metadata: this.extractMessageMetadata(message)
             }))
         };
+
+        if (options.includeRaw) {
+            dto.rawEntries = conversation.getRawEntries().map((entry): RawEntryDto => ({
+                id: entry.id,
+                type: entry.type,
+                content: entry.content,
+                timestamp: entry.timestamp.toISOString(),
+                parentId: entry.parentId || undefined,
+                metadata: entry.metadata
+            }));
+        }
+
+        return dto;
     };
 
     private extractMessageMetadata(message: Message): MessageDto['metadata'] {

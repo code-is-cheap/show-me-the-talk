@@ -46,6 +46,7 @@ export class ShowMeTheTalk {
         projectPath?: string;
         includeMetadata?: boolean;
         simplifyToolInteractions?: boolean;
+        includeRaw?: boolean;
     }): Promise<ExportResult> {
         const request: ExportRequest = {
             format: this.mapFormat(options.format),
@@ -53,7 +54,8 @@ export class ShowMeTheTalk {
             sessionId: options.sessionId,
             projectPath: options.projectPath,
             includeMetadata: options.includeMetadata ?? false,
-            simplifyToolInteractions: options.simplifyToolInteractions ?? true
+            simplifyToolInteractions: options.simplifyToolInteractions ?? true,
+            includeRaw: options.includeRaw ?? false
         };
 
         return await this.conversationService.exportConversations(request);

@@ -2,6 +2,7 @@ import { ConversationRepository } from '../../domain/repositories/ConversationRe
 import { Conversation } from '../../domain/models/Conversation.js';
 import { ProjectContext } from '../../domain/models/ProjectContext.js';
 import { UserMessage, AssistantMessage, ToolUse, TokenUsage, ToolInteraction } from '../../domain/models/Message.js';
+import { RawConversationEntry } from '../../domain/models/RawConversationEntry.js';
 import { readdir, readFile } from 'fs/promises';
 import { join, basename } from 'path';
 
@@ -97,17 +98,16 @@ export class JsonlConversationRepository implements ConversationRepository {
             
             // Parse first message to get start time
             const firstLine = JSON.parse(lines[0]);
-            let startTime = new Date();
-            if (firstLine.timestamp) {
-                const parsedDate = new Date(firstLine.timestamp);
-                startTime = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-            }
+            const startTime = this.extractTimestamp(firstLine);
             
             const conversation = new Conversation(sessionId, projectContext, startTime);
             
             for (const line of lines) {
                 try {
                     const messageData = JSON.parse(line);
+                    const rawEntries = this.parseRawEntries(messageData);
+                    rawEntries.forEach(entry => conversation.addRawEntry(entry));
+
                     const message = this.parseMessage(messageData);
                     if (message) {
                         conversation.addMessage(message);
@@ -161,6 +161,253 @@ export class JsonlConversationRepository implements ConversationRepository {
         } catch (error) {
             return null;
         }
+    }
+
+    private parseRawEntries(data: any): RawConversationEntry[] {
+        const entries: RawConversationEntry[] = [];
+        const timestamp = this.extractTimestamp(data);
+        const parentId = data.parentUuid ?? data.logicalParentUuid ?? null;
+        const baseId = this.extractEntryId(data);
+
+        if (!data || typeof data !== 'object') {
+            return entries;
+        }
+
+        switch (data.type) {
+            case 'user': {
+                const messageData = data.message || {};
+                const content = messageData.content;
+
+                if (typeof content === 'string') {
+                    entries.push({
+                        id: baseId,
+                        type: 'user',
+                        timestamp,
+                        parentId,
+                        content,
+                        metadata: { messageId: baseId }
+                    });
+                    return entries;
+                }
+
+                if (Array.isArray(content)) {
+                    const textParts: string[] = [];
+                    let textEntryIndex = 0;
+
+                    const flushText = () => {
+                        if (textParts.length === 0) return;
+                        entries.push({
+                            id: `${baseId}:text:${textEntryIndex++}`,
+                            type: 'user',
+                            timestamp,
+                            parentId,
+                            content: textParts.join('\n'),
+                            metadata: { messageId: baseId }
+                        });
+                        textParts.length = 0;
+                    };
+
+                    content.forEach((item: any, index: number) => {
+                        if (!item || typeof item !== 'object') {
+                            return;
+                        }
+
+                        if (item.type === 'tool_result') {
+                            flushText();
+                            entries.push({
+                                id: `${baseId}:tool:${index}`,
+                                type: 'tool_result',
+                                timestamp,
+                                parentId,
+                                content: typeof item.content === 'string' ? item.content : JSON.stringify(item.content),
+                                metadata: {
+                                    messageId: baseId,
+                                    toolUseId: item.tool_use_id,
+                                    isError: item.is_error || false
+                                }
+                            });
+                            return;
+                        }
+
+                        if (item.type === 'text' || item.type === 'input_text') {
+                            textParts.push(item.text || '');
+                            return;
+                        }
+
+                        if (item.type === 'image' || item.type === 'image_url') {
+                            textParts.push('[Image attached]');
+                            return;
+                        }
+
+                        if (item.text) {
+                            textParts.push(`[${item.type}: ${item.text}]`);
+                        }
+                    });
+
+                    flushText();
+                }
+                return entries;
+            }
+            case 'assistant': {
+                const messageData = data.message || {};
+                const contentItems = Array.isArray(messageData.content) ? messageData.content : [];
+                const textParts: string[] = [];
+                const toolUses: ToolUse[] = [];
+
+                if (typeof messageData.content === 'string') {
+                    textParts.push(messageData.content);
+                }
+
+                for (const item of contentItems) {
+                    if (!item || typeof item !== 'object') continue;
+                    if (item.type === 'text') {
+                        if (item.text) textParts.push(item.text);
+                    } else if (item.type === 'tool_use') {
+                        toolUses.push(new ToolUse(item.id, item.name, item.input || {}));
+                    } else if (item.text) {
+                        textParts.push(`[${item.type}: ${item.text}]`);
+                    }
+                }
+
+                const usage = messageData.usage ? {
+                    inputTokens: messageData.usage.input_tokens || 0,
+                    outputTokens: messageData.usage.output_tokens || 0,
+                    cacheCreationTokens: messageData.usage.cache_creation_input_tokens || 0,
+                    cacheReadTokens: messageData.usage.cache_read_input_tokens || 0
+                } : undefined;
+
+                if (textParts.length === 0 && toolUses.length === 0 && !messageData.model && !usage) {
+                    return entries;
+                }
+
+                entries.push({
+                    id: baseId,
+                    type: 'assistant',
+                    timestamp,
+                    parentId,
+                    content: textParts.join('\n'),
+                    metadata: {
+                        messageId: baseId,
+                        model: messageData.model,
+                        toolUses: toolUses.map(tool => ({
+                            id: tool.id,
+                            name: tool.name,
+                            input: tool.input
+                        })),
+                        usage
+                    }
+                });
+                return entries;
+            }
+            case 'file-history-snapshot': {
+                const snapshot = data.snapshot || {};
+                const files = snapshot.trackedFileBackups ? Object.keys(snapshot.trackedFileBackups) : [];
+                entries.push({
+                    id: baseId,
+                    type: 'file_snapshot',
+                    timestamp,
+                    parentId,
+                    content: `File snapshot: ${files.length} file${files.length === 1 ? '' : 's'}`,
+                    metadata: {
+                        messageId: baseId,
+                        files,
+                        isSnapshotUpdate: data.isSnapshotUpdate || false,
+                        snapshotMessageId: data.messageId
+                    }
+                });
+                return entries;
+            }
+            case 'summary': {
+                entries.push({
+                    id: baseId,
+                    type: 'summary',
+                    timestamp,
+                    parentId,
+                    content: data.summary || '',
+                    metadata: {
+                        messageId: baseId,
+                        leafUuid: data.leafUuid
+                    }
+                });
+                return entries;
+            }
+            case 'queue-operation': {
+                const operation = data.operation || 'queue';
+                const content = data.content || '';
+                entries.push({
+                    id: baseId,
+                    type: 'queue',
+                    timestamp,
+                    parentId,
+                    content: `${operation}: ${content}`.trim(),
+                    metadata: {
+                        messageId: baseId,
+                        operation
+                    }
+                });
+                return entries;
+            }
+            case 'system': {
+                entries.push({
+                    id: baseId,
+                    type: 'system',
+                    timestamp,
+                    parentId,
+                    content: data.content || data.subtype || 'system event',
+                    metadata: {
+                        messageId: baseId,
+                        subtype: data.subtype,
+                        level: data.level,
+                        isMeta: data.isMeta,
+                        compactMetadata: data.compactMetadata
+                    }
+                });
+                return entries;
+            }
+            default: {
+                entries.push({
+                    id: baseId,
+                    type: 'unknown',
+                    timestamp,
+                    parentId,
+                    content: data.content ? String(data.content) : JSON.stringify(data),
+                    metadata: { messageId: baseId }
+                });
+                return entries;
+            }
+        }
+    }
+
+    private extractEntryId(data: any): string {
+        return data.uuid ||
+            data.messageId ||
+            data.id ||
+            data?.message?.id ||
+            `${data.type || 'entry'}-${Date.now()}`;
+    }
+
+    private extractTimestamp(data: any): Date {
+        const candidates = [
+            data?.timestamp,
+            data?.snapshot?.timestamp,
+            data?.message?.timestamp
+        ];
+        for (const candidate of candidates) {
+            const parsed = this.parseTimestamp(candidate);
+            if (parsed) return parsed;
+        }
+        return new Date();
+    }
+
+    private parseTimestamp(value: any): Date | null {
+        if (!value) return null;
+        if (typeof value === 'string' || typeof value === 'number') {
+            const parsed = new Date(value);
+            if (!isNaN(parsed.getTime())) {
+                return parsed;
+            }
+        }
+        return null;
     }
 
     private parseUserMessage(id: string, timestamp: Date, parentId: string | null, messageData: any): UserMessage {

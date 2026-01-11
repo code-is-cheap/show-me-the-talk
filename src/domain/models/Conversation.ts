@@ -1,4 +1,5 @@
 import { Message, MessageType } from './Message.js';
+import { RawConversationEntry } from './RawConversationEntry.js';
 import { ProjectContext } from './ProjectContext.js';
 import { ConversationCategory } from '../services/ConversationFilter.js';
 
@@ -15,6 +16,7 @@ export interface ConversationMetadata {
 export class Conversation {
     private endedAt?: Date;
     private _messages: Message[] = [];
+    private _rawEntries: RawConversationEntry[] = [];
     private _metadata: ConversationMetadata = {};
 
     constructor(
@@ -31,12 +33,27 @@ export class Conversation {
         this.endedAt = message.timestamp;
     }
 
+    addRawEntry(entry: RawConversationEntry): void {
+        this._rawEntries.push(entry);
+        if (!this.endedAt || entry.timestamp > this.endedAt) {
+            this.endedAt = entry.timestamp;
+        }
+    }
+
     getMessages(): readonly Message[] {
         return [...this._messages];
     }
 
+    getRawEntries(): readonly RawConversationEntry[] {
+        return [...this._rawEntries];
+    }
+
     getMessageCount(): number {
         return this._messages.length;
+    }
+
+    getRawEntryCount(): number {
+        return this._rawEntries.length;
     }
 
     getUserMessages(): Message[] {
@@ -107,6 +124,10 @@ export class Conversation {
     // Allow access to messages for compatibility
     get messages(): readonly Message[] {
         return this.getMessages();
+    }
+
+    get rawEntries(): readonly RawConversationEntry[] {
+        return this.getRawEntries();
     }
 
     // Metadata management

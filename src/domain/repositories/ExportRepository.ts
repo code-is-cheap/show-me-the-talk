@@ -15,6 +15,7 @@ export interface ExportSummaryDto {
     exportTimestamp: Date;
     exportDate: string;
     includeMetadata: boolean;
+    includeRaw?: boolean;
     metrics?: any;
 }
 

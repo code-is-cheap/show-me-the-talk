@@ -5,6 +5,7 @@ export interface ExportRequest {
     projectPath?: string;
     includeMetadata?: boolean;
     simplifyToolInteractions?: boolean;
+    includeRaw?: boolean;
 }
 
 export enum ExportFormat {
@@ -36,6 +37,7 @@ export interface ConversationDto {
     messageCount: number;
     duration: number;
     messages: MessageDto[];
+    rawEntries?: RawEntryDto[];
 }
 
 export interface MessageDto {
@@ -53,6 +55,15 @@ export interface MessageDto {
         };
         toolUses?: ToolUseDto[];
     };
+}
+
+export interface RawEntryDto {
+    id: string;
+    type: 'user' | 'assistant' | 'tool_result' | 'system' | 'file_snapshot' | 'summary' | 'queue' | 'unknown';
+    content: string;
+    timestamp: string;
+    parentId?: string;
+    metadata?: Record<string, any>;
 }
 
 export interface ToolUseDto {

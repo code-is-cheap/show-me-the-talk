@@ -6,6 +6,11 @@ This document provides comprehensive guidance for testing the Terminal User Inte
 
 The TUI is built using React with Ink, which renders React components to the terminal. Testing requires special considerations for TTY behavior, terminal output, and user interactions.
 
+## UX Acceptance
+
+Use the checklist below as the experience "definition of done":
+- [UX Acceptance Checklist](./UX_ACCEPTANCE_CHECKLIST.md)
+
 ## Testing Architecture
 
 ### 1. Testing Levels

@@ -8,6 +8,12 @@ import {
 } from '../../models/usage/UsageReport.js';
 
 type RawObject = Record<string, unknown>;
+type UsageBase = {
+    entries: any[];
+    totals?: NormalizedUsageTotals;
+    metadata: Record<string, unknown>;
+    projects?: Array<{ project: string; entries: any[]; totals?: NormalizedUsageTotals }>;
+};
 
 export class CcUsageParser {
     normalize(raw: unknown, grouping: UsageGrouping): NormalizedUsageData {
@@ -15,8 +21,8 @@ export class CcUsageParser {
         const entries = base.entries.map((entry, index) => this.normalizeEntry(entry, grouping, index));
         const totals = this.normalizeTotals(base.totals, entries);
 
-        const projects = base.projects?.map(project => {
-            const projectEntries = project.entries.map((entry, index) =>
+        const projects = base.projects?.map((project: { project: string; entries: any[]; totals?: NormalizedUsageTotals }) => {
+            const projectEntries = project.entries.map((entry: any, index: number) =>
                 this.normalizeEntry(entry, grouping, index, project.project)
             );
 
@@ -36,7 +42,7 @@ export class CcUsageParser {
         } satisfies NormalizedUsageData;
     }
 
-    private extractBase(raw: unknown, grouping: UsageGrouping) {
+    private extractBase(raw: unknown, grouping: UsageGrouping): UsageBase {
         if (raw === null || raw === undefined) {
             return { entries: [], metadata: {} };
         }
@@ -65,7 +71,7 @@ export class CcUsageParser {
         return this.extractEntriesFromObject(obj, grouping);
     }
 
-    private extractEntriesFromObject(obj: RawObject, grouping: UsageGrouping) {
+    private extractEntriesFromObject(obj: RawObject, grouping: UsageGrouping): UsageBase {
         const metadata: Record<string, unknown> = {};
         if (typeof obj.type === 'string') {
             metadata.type = obj.type;
@@ -293,7 +299,7 @@ export class CcUsageParser {
     private extractModelNames(entry: any): string[] | undefined {
         if (Array.isArray(entry.models)) {
             return entry.models
-                .map(model => typeof model === 'string' ? model : model?.model ?? model?.name)
+                .map((model: unknown) => typeof model === 'string' ? model : (model as any)?.model ?? (model as any)?.name)
                 .filter(Boolean)
                 .map(String);
         }
@@ -301,7 +307,7 @@ export class CcUsageParser {
         if (Array.isArray(entry.modelsUsed)) {
             return entry.modelsUsed
                 .filter((model: unknown): model is string => typeof model === 'string')
-                .map(model => model);
+                .map((model: string) => model);
         }
 
         if (Array.isArray(entry.breakdown)) {

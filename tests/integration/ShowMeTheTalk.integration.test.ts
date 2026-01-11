@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ShowMeTheTalk } from '@/ShowMeTheTalk';
-import { writeFileSync, mkdirSync, rmSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 describe('ShowMeTheTalk Integration Tests', () => {
@@ -155,9 +155,27 @@ describe('ShowMeTheTalk Integration Tests', () => {
       expect(existsSync(outputPath)).toBe(true);
 
       // Verify exported content
-      const exportedData = JSON.parse(require('fs').readFileSync(outputPath, 'utf-8'));
+      const exportedData = JSON.parse(readFileSync(outputPath, 'utf-8'));
       expect(exportedData.conversations).toHaveLength(1);
       expect(exportedData.metrics).toBeTruthy();
+    });
+
+    it('should include raw entries when requested', async () => {
+      const smtt = new ShowMeTheTalk(testDir);
+      const outputPath = join(testDir, 'export-raw.json');
+
+      const result = await smtt.export({
+        format: 'json',
+        outputPath,
+        includeRaw: true
+      });
+
+      expect(result.success).toBe(true);
+      const exportedData = JSON.parse(readFileSync(outputPath, 'utf-8'));
+      const rawEntries = exportedData.conversations[0].rawEntries;
+      expect(Array.isArray(rawEntries)).toBe(true);
+      const types = rawEntries.map((entry: any) => entry.type);
+      expect(types).toContain('tool_result');
     });
 
     it('should export to simplified markdown format', async () => {
@@ -195,7 +213,7 @@ describe('ShowMeTheTalk Integration Tests', () => {
       expect(result.success).toBe(true);
       expect(result.conversationCount).toBe(1);
 
-      const exportedData = JSON.parse(require('fs').readFileSync(outputPath, 'utf-8'));
+      const exportedData = JSON.parse(readFileSync(outputPath, 'utf-8'));
       expect(exportedData.conversations).toHaveLength(1);
       expect(exportedData.conversations[0].sessionId).toBe('test-session-123');
     });

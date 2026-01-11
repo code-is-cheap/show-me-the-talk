@@ -19,6 +19,15 @@ interface MessageDto {
     };
 }
 
+interface RawEntryDto {
+    id: string;
+    type: 'user' | 'assistant' | 'tool_result' | 'system' | 'file_snapshot' | 'summary' | 'queue' | 'unknown';
+    content: string;
+    timestamp: string;
+    parentId?: string;
+    metadata?: Record<string, any>;
+}
+
 interface ConversationDto {
     sessionId: string;
     projectPath: string;
@@ -27,6 +36,7 @@ interface ConversationDto {
     duration: number;
     messageCount: number;
     messages: MessageDto[];
+    rawEntries?: RawEntryDto[];
 }
 
 interface ConversationMetrics {
@@ -102,7 +112,7 @@ export class FileExportService implements ExportRepository {
         markdown += `---\n\n`;
 
         for (const conversation of data.conversations) {
-            markdown += this.conversationToEnhancedMarkdown(conversation);
+            markdown += this.conversationToEnhancedMarkdown(conversation, data.includeRaw);
             markdown += `\n---\n\n`;
         }
 
@@ -128,7 +138,7 @@ export class FileExportService implements ExportRepository {
             }
         };
 
-        const html = await this.generateEnhancedHtml(data.conversations, enhancedConfig);
+        const html = await this.generateEnhancedHtml(data.conversations, enhancedConfig, data.includeRaw);
         writeFileSync(outputPath, html);
     }
 
@@ -159,20 +169,30 @@ export class FileExportService implements ExportRepository {
         writeFileSync(outputPath, markdown);
     }
 
-    private conversationToEnhancedMarkdown(conversation: ConversationDto): string {
+    private conversationToEnhancedMarkdown(conversation: ConversationDto, includeRaw?: boolean): string {
         let md = `## Session: ${conversation.sessionId}\n\n`;
         md += `**Project:** ${conversation.projectPath}\n\n`;
         md += `**Start Time:** ${conversation.startTime}\n\n`;
         md += `**End Time:** ${conversation.endTime || 'Ongoing'}\n\n`;
         md += `**Duration:** ${this.formatDuration(conversation.duration)}\n\n`;
         md += `**Message Count:** ${conversation.messageCount}\n\n`;
+        if (includeRaw && conversation.rawEntries) {
+            md += `**Raw Entries:** ${conversation.rawEntries.length}\n\n`;
+        }
 
-        md += `### Enhanced Conversation\n\n`;
-
-        // Use traditional message rendering for now - TODO: integrate enhanced domain model
-        for (const message of conversation.messages) {
-            md += this.messageToEnhancedMarkdown(message);
-            md += `\n`;
+        if (includeRaw && conversation.rawEntries && conversation.rawEntries.length > 0) {
+            md += `### Full Transcript (Raw)\n\n`;
+            for (const entry of conversation.rawEntries) {
+                md += this.rawEntryToMarkdown(entry);
+                md += `\n`;
+            }
+        } else {
+            md += `### Enhanced Conversation\n\n`;
+            // Use traditional message rendering for now - TODO: integrate enhanced domain model
+            for (const message of conversation.messages) {
+                md += this.messageToEnhancedMarkdown(message);
+                md += `\n`;
+            }
         }
 
         return md;
@@ -204,7 +224,31 @@ export class FileExportService implements ExportRepository {
         }
     }
 
-    private conversationToHtml(conversation: ConversationDto): string {
+    private rawEntryToMarkdown(entry: RawEntryDto): string {
+        const timestamp = new Date(entry.timestamp).toLocaleString();
+        const label = this.getRawEntryLabel(entry.type);
+        let md = `### ${label} (${timestamp})\n\n`;
+
+        if (entry.content) {
+            const lines = entry.content.split('\n').map(line => `> ${line}`).join('\n');
+            md += `${lines}\n\n`;
+        }
+
+        if (entry.metadata) {
+            const metadataLines = this.formatRawEntryMetadata(entry);
+            if (metadataLines.length > 0) {
+                md += `**Details:**\n`;
+                metadataLines.forEach(line => {
+                    md += `- ${line}\n`;
+                });
+                md += `\n`;
+            }
+        }
+
+        return md;
+    }
+
+    private conversationToHtml(conversation: ConversationDto, includeRaw?: boolean): string {
         let html = `<article class="conversation">`;
         html += `<header class="conversation-header">`;
         html += `<h2>Session: ${conversation.sessionId}</h2>`;
@@ -214,13 +258,21 @@ export class FileExportService implements ExportRepository {
         html += `<span class="time"><strong>End:</strong> ${conversation.endTime || 'Ongoing'}</span>`;
         html += `<span class="duration"><strong>Duration:</strong> ${this.formatDuration(conversation.duration)}</span>`;
         html += `<span class="count"><strong>Messages:</strong> ${conversation.messageCount}</span>`;
+        if (includeRaw && conversation.rawEntries) {
+            html += `<span class="count"><strong>Raw Entries:</strong> ${conversation.rawEntries.length}</span>`;
+        }
         html += `</div>`;
         html += `</header>`;
         html += `<div class="conversation-content">`;
-
-        // Use traditional message rendering for now - TODO: integrate enhanced domain model
-        for (const message of conversation.messages) {
-            html += this.messageToHtml(message);
+        if (includeRaw && conversation.rawEntries && conversation.rawEntries.length > 0) {
+            for (const entry of conversation.rawEntries) {
+                html += this.rawEntryToHtml(entry);
+            }
+        } else {
+            // Use traditional message rendering for now - TODO: integrate enhanced domain model
+            for (const message of conversation.messages) {
+                html += this.messageToHtml(message);
+            }
         }
 
         html += `</div>`;
@@ -283,6 +335,108 @@ export class FileExportService implements ExportRepository {
             html += `</div>`;
             return html;
         }
+    }
+
+    private rawEntryToHtml(entry: RawEntryDto): string {
+        const timestamp = new Date(entry.timestamp).toLocaleString();
+        const label = this.getRawEntryLabel(entry.type);
+        const content = entry.content ? this.formatMessageContent(entry.content) : '';
+        const metaLines = entry.metadata ? this.formatRawEntryMetadata(entry) : [];
+
+        let html = `<div class="element raw-entry raw-${entry.type}">
+        <div class="timestamp">${this.escapeHtml(label)} - ${timestamp}</div>`;
+
+        if (content) {
+            html += `<div class="content">${content}</div>`;
+        }
+
+        if (metaLines.length > 0) {
+            html += `<div class="tool-list"><strong>Details:</strong>`;
+            metaLines.forEach(line => {
+                html += `<div class="tool-item">${this.escapeHtml(line)}</div>`;
+            });
+            html += `</div>`;
+        }
+
+        html += `</div>`;
+        return html;
+    }
+
+    private getRawEntryLabel(type: RawEntryDto['type']): string {
+        switch (type) {
+            case 'user':
+                return '👤 User';
+            case 'assistant':
+                return '🤖 Assistant';
+            case 'tool_result':
+                return '🧰 Tool Result';
+            case 'system':
+                return '⚙️ System';
+            case 'file_snapshot':
+                return '📂 File Snapshot';
+            case 'summary':
+                return '📝 Summary';
+            case 'queue':
+                return '⏱ Queue';
+            default:
+                return '❓ Event';
+        }
+    }
+
+    private formatRawEntryMetadata(entry: RawEntryDto): string[] {
+        const metadata: string[] = [];
+        const meta = entry.metadata || {};
+
+        if (entry.type === 'assistant') {
+            if (meta.model) {
+                metadata.push(`Model: ${meta.model}`);
+            }
+            if (Array.isArray(meta.toolUses) && meta.toolUses.length > 0) {
+                meta.toolUses.forEach((tool: any) => {
+                    const inputSummary = tool.input ? JSON.stringify(tool.input).slice(0, 120) : '';
+                    metadata.push(`Tool: ${tool.name}${inputSummary ? ` (${inputSummary}...)` : ''}`);
+                });
+            }
+            if (meta.usage) {
+                metadata.push(`Tokens: ${meta.usage.inputTokens ?? 0} in, ${meta.usage.outputTokens ?? 0} out`);
+            }
+        }
+
+        if (entry.type === 'tool_result') {
+            if (meta.toolUseId) {
+                metadata.push(`Tool Use ID: ${meta.toolUseId}`);
+            }
+            if (meta.isError) {
+                metadata.push('Error: true');
+            }
+        }
+
+        if (entry.type === 'file_snapshot') {
+            const files = Array.isArray(meta.files) ? meta.files : [];
+            if (files.length > 0) {
+                metadata.push(`Files: ${files.slice(0, 5).join(', ')}${files.length > 5 ? '…' : ''}`);
+                metadata.push(`File count: ${files.length}`);
+            }
+        }
+
+        if (entry.type === 'system') {
+            if (meta.subtype) {
+                metadata.push(`Subtype: ${meta.subtype}`);
+            }
+            if (meta.level) {
+                metadata.push(`Level: ${meta.level}`);
+            }
+        }
+
+        if (entry.type === 'queue' && meta.operation) {
+            metadata.push(`Operation: ${meta.operation}`);
+        }
+
+        if (entry.type === 'summary' && meta.leafUuid) {
+            metadata.push(`Leaf: ${meta.leafUuid}`);
+        }
+
+        return metadata;
     }
 
     private escapeHtml(text: string): string {
@@ -421,6 +575,31 @@ export class FileExportService implements ExportRepository {
         .element.subtle {
             background: #f9f9f9;
             color: #666;
+        }
+
+        .raw-entry {
+            background: #fffaf0;
+            border-left: 4px solid #95a5a6;
+        }
+
+        .raw-entry.raw-system {
+            border-left-color: #f39c12;
+        }
+
+        .raw-entry.raw-tool_result {
+            border-left-color: #8e44ad;
+        }
+
+        .raw-entry.raw-file_snapshot {
+            border-left-color: #16a085;
+        }
+
+        .raw-entry.raw-summary {
+            border-left-color: #2980b9;
+        }
+
+        .raw-entry.raw-queue {
+            border-left-color: #7f8c8d;
         }
         
         .tool-only-message {
@@ -593,7 +772,7 @@ export class FileExportService implements ExportRepository {
     /**
      * 生成增强的HTML导出（包含Time Machine功能）
      */
-    private async generateEnhancedHtml(conversations: ConversationDto[], config: ExportConfiguration): Promise<string> {
+    private async generateEnhancedHtml(conversations: ConversationDto[], config: ExportConfiguration, includeRaw?: boolean): Promise<string> {
         const htmlParts: string[] = [];
 
         // HTML头部
@@ -635,7 +814,7 @@ export class FileExportService implements ExportRepository {
             const timelineHtml = this.generateTimelineHtml(timeline, conversation.sessionId);
 
             // 暂时使用现有的HTML渲染逻辑，后续可以集成增强的领域模型
-            const conversationHtml = this.conversationToHtml(conversation);
+            const conversationHtml = this.conversationToHtml(conversation, includeRaw);
 
             htmlParts.push(`<article class="conversation enhanced time-machine-enabled" data-session-id="${conversation.sessionId}" id="conversation-${index}">`);
             htmlParts.push(timelineHtml);

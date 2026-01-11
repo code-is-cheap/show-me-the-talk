@@ -15,6 +15,7 @@ interface ParsedArgs {
     sessionId?: string;
     projectPath?: string;
     includeMetadata?: boolean;
+    includeRaw?: boolean;
     help?: boolean;
     version?: boolean;
     tui?: boolean;
@@ -87,6 +88,10 @@ function parseArgs(): ParsedArgs {
             case '-m':
             case '--metadata':
                 parsed.includeMetadata = true;
+                break;
+            case '--raw':
+            case '--full':
+                parsed.includeRaw = true;
                 break;
             case '-h':
             case '--help':
@@ -204,6 +209,7 @@ Options:
   -s, --session <id>        Export specific session ID
   -p, --project <path>      Export conversations for specific project
   -m, --metadata            Include conversation metrics
+      --raw, --full         Include full raw transcript entries
   -t, --tui                 Launch interactive Terminal UI (default behavior)
   --cost-report <file>      Generate cost analysis JSON via ccusage (requires ccusage CLI)
       --cost-group <mode>   Grouping for analysis: daily, weekly, monthly, session, blocks (default: daily)
@@ -225,6 +231,7 @@ Examples:
   show-me-the-talk -f json -o talks.json             # Export as JSON
   show-me-the-talk -s abc123 -o session.md           # Export specific session
   show-me-the-talk -p myproject -m -o project.md     # Export project with metadata
+  show-me-the-talk -f html --raw -o full.html        # Export full raw transcript
 
 "Code is cheap, show me the talk" - Export your AI collaboration experiences!
 `);
@@ -251,7 +258,7 @@ async function main(): Promise<void> {
 
         // Default to TUI if no explicit export arguments are provided
         const hasExportArgs = args.format !== 'simple' || args.output !== 'conversations.md' || 
-                            args.sessionId || args.projectPath || args.includeMetadata;
+                            args.sessionId || args.projectPath || args.includeMetadata || args.includeRaw;
         
         if (args.tui || !hasExportArgs) {
             try {
@@ -261,7 +268,7 @@ async function main(): Promise<void> {
 
                 const claudeDir = args.claudeDir || resolve(homedir(), '.claude');
                 console.log('🚀 Starting Comprehensive Ink TUI with React+Ink integration...');
-                console.log('💡 Features: Timeline mode (t), User navigation (u/U), Import (i)');
+                console.log('💡 Features: Timeline mode (t), Thread view (v), Raw view (r), User navigation (u/U), Import (i)');
 
                 // Initialize services
                 const container = Container.getInstance();
@@ -284,6 +291,7 @@ async function main(): Promise<void> {
                 console.log('   --format html     # Beautiful HTML export with Time Machine features');
                 console.log('   --format markdown # Enhanced markdown with emojis and formatting');
                 console.log('   --metadata        # Include comprehensive conversation metrics');
+                console.log('   --raw             # Include full raw transcript entries');
                 console.log('\n🚀 Available CLI filtering options:');
                 console.log('   -p, --project <path>    Filter by specific project');
                 console.log('   -s, --session <id>      Export specific session ID');
@@ -312,7 +320,8 @@ async function main(): Promise<void> {
                 sessionId: args.sessionId,
                 projectPath: args.projectPath,
                 includeMetadata: args.includeMetadata || false,
-                simplifyToolInteractions: true
+                simplifyToolInteractions: true,
+                includeRaw: args.includeRaw
             });
 
             if (result.success) {
@@ -331,6 +340,9 @@ async function main(): Promise<void> {
                 // Show metadata info
                 if (args.includeMetadata) {
                     console.log('📊 Export includes comprehensive conversation metrics');
+                }
+                if (args.includeRaw) {
+                    console.log('🧾 Export includes full raw transcript entries');
                 }
             } else {
                 console.error(`❌ Export failed: ${result.error}`);
